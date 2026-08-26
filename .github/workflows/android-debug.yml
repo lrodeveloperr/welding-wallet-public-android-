@@ -36,11 +36,29 @@ jobs:
           gradle-version: '8.13'
 
       - name: Test backend and build debug APK
-        run: gradle :backend:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+        id: gradle_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :backend:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: welding-gas-wallet-build-log
+          path: build.log
+          if-no-files-found: error
 
       - name: Upload APK
+        if: steps.gradle_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: welding-gas-wallet-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Fail workflow if Gradle failed
+        if: steps.gradle_build.outcome == 'failure'
+        run: exit 1
