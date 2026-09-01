@@ -55,6 +55,9 @@ jobs:
       - name: Analyze
         run: flutter analyze --fatal-infos
 
+      - name: Refresh dashboard design evidence
+        run: flutter test --update-goldens test/dashboard_golden_test.dart
+
       - name: Test
         run: flutter test
 
