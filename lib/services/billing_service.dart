@@ -10,10 +10,10 @@ const String monthlyProductId = 'com.gooduse.weldinggaswallet.pro.monthly';
 const String annualProductId = 'com.gooduse.weldinggaswallet.pro.annual';
 
 class BillingService {
-  BillingService({InAppPurchase? store})
-    : _store = store ?? InAppPurchase.instance;
+  BillingService({InAppPurchase? store}) : _storeOverride = store;
 
-  final InAppPurchase _store;
+  final InAppPurchase? _storeOverride;
+  InAppPurchase get _store => _storeOverride ?? InAppPurchase.instance;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
   final _verified = StreamController<Entitlement>.broadcast();
 
