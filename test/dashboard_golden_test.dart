@@ -20,8 +20,9 @@ void main() {
     // Flutter's test renderer does not automatically load the Material icon
     // font. Load the same font family explicitly so golden evidence contains
     // the real app icons instead of missing-glyph squares.
-    final materialIconBytes =
-        await File('test/fonts/MaterialIcons-Regular.otf').readAsBytes();
+    final materialIconBytes = await File(
+      'test/fonts/MaterialIcons-Regular.otf',
+    ).readAsBytes();
     final materialIconLoader = FontLoader('MaterialIcons')
       ..addFont(
         Future<ByteData>.value(ByteData.sublistView(materialIconBytes)),
