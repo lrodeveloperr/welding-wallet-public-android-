@@ -1,6 +1,3 @@
-import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,13 +17,8 @@ void main() {
     // Flutter's test renderer does not automatically load the Material icon
     // font. Load the same font family explicitly so golden evidence contains
     // the real app icons instead of missing-glyph squares.
-    final materialIconBytes = await File(
-      'test/fonts/MaterialIcons-Regular.otf',
-    ).readAsBytes();
     final materialIconLoader = FontLoader('MaterialIcons')
-      ..addFont(
-        Future<ByteData>.value(ByteData.sublistView(materialIconBytes)),
-      );
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await materialIconLoader.load();
 
     tester.view.physicalSize = const Size(390, 844);

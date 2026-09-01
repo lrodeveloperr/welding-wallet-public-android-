@@ -14,6 +14,6 @@ Roboto Regular and Medium are distributed under the Apache License 2.0. Copyrigh
 
 ## Material Icons
 
-The Material Icons font used by the golden-render test is distributed under the Apache License 2.0. Copyright Google LLC.
+Flutter's bundled Material Icons font, loaded explicitly by the golden-render test, is distributed under the Apache License 2.0. Copyright Google LLC.
 
 https://github.com/googlefonts/roboto-3-classic
