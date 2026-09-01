@@ -6,6 +6,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'core/models.dart';
 import 'core/wallet_engine.dart';
 import 'services/billing_service.dart';
+import 'services/document_store.dart';
 import 'services/reminder_service.dart';
 
 class AppController extends ChangeNotifier {
@@ -13,12 +14,15 @@ class AppController extends ChangeNotifier {
     required this.engine,
     BillingService? billing,
     ReminderService? reminders,
+    DocumentStore? documents,
   }) : billing = billing ?? BillingService(),
-       reminders = reminders ?? ReminderService();
+       reminders = reminders ?? ReminderService(),
+       documents = documents ?? DocumentStore();
 
   final WalletEngine engine;
   final BillingService billing;
   final ReminderService reminders;
+  final DocumentStore documents;
 
   WalletData? wallet;
   bool loading = true;
@@ -35,6 +39,7 @@ class AppController extends ChangeNotifier {
         entitlement,
       ) async {
         await engine.resumePendingDraft(entitlement);
+        await engine.resumePendingConsumableDraft(entitlement);
         await reload(notify: true);
         notice = 'Welding Wallet Pro is active.';
         notifyListeners();
@@ -93,6 +98,54 @@ class AppController extends ChangeNotifier {
       error = _message(value);
       notifyListeners();
       return null;
+    }
+  }
+
+  Future<AddConsumableResult?> addConsumable(AddConsumableDraft draft) async {
+    clearMessage();
+    try {
+      final result = await engine.addConsumableOrGate(draft);
+      await reload(notify: false);
+      notice = result.wasAdded ? 'Consumable batch added.' : null;
+      notifyListeners();
+      return result;
+    } catch (value) {
+      error = _message(value);
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> pickAndAttachCertificate(String consumableId) async {
+    clearMessage();
+    try {
+      final stored = await documents.pickAndStoreCertificate(consumableId);
+      if (stored == null) return false;
+      await engine.attachConsumableCertificate(
+        consumableId,
+        localPath: stored.path,
+        originalName: stored.originalName,
+      );
+      await reload(notify: false);
+      notice = 'Certificate attached.';
+      notifyListeners();
+      return true;
+    } catch (value) {
+      error = _message(value);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> openCertificate(String localPath) async {
+    clearMessage();
+    try {
+      await documents.open(localPath);
+      return true;
+    } catch (value) {
+      error = 'The certificate file could not be opened.';
+      notifyListeners();
+      return false;
     }
   }
 

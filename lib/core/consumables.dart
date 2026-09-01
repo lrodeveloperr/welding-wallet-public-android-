@@ -98,28 +98,27 @@ class ConsumableBatch {
         : certificateDate ?? this.certificateDate,
   );
 
-  Map<String, Object?> toJson({bool includeLocalDocuments = true}) =>
-      <String, Object?>{
-        'id': id,
-        'primaryCode': primaryCode,
-        'type': type.name,
-        'productName': productName,
-        'batchLot': batchLot,
-        'receiptDate': receiptDate.toIso8601String(),
-        'lifecycle': lifecycle.name,
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-        'classification': classification,
-        'manufacturer': manufacturer,
-        'supplierId': supplierId,
-        'location': location,
-        'certificateLocalPath': includeLocalDocuments
-            ? certificateLocalPath
-            : null,
-        'certificateOriginalName': certificateOriginalName,
-        'certificateNumber': certificateNumber,
-        'certificateDate': certificateDate?.toIso8601String(),
-      };
+  Map<String, Object?> toJson({
+    bool includeLocalDocuments = true,
+  }) => <String, Object?>{
+    'id': id,
+    'primaryCode': primaryCode,
+    'type': type.name,
+    'productName': productName,
+    'batchLot': batchLot,
+    'receiptDate': receiptDate.toIso8601String(),
+    'lifecycle': lifecycle.name,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'classification': classification,
+    'manufacturer': manufacturer,
+    'supplierId': supplierId,
+    'location': location,
+    'certificateLocalPath': includeLocalDocuments ? certificateLocalPath : null,
+    'certificateOriginalName': certificateOriginalName,
+    'certificateNumber': certificateNumber,
+    'certificateDate': certificateDate?.toIso8601String(),
+  };
 
   factory ConsumableBatch.fromJson(Map<String, Object?> json) =>
       ConsumableBatch(

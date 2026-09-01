@@ -51,7 +51,7 @@ class ReminderService {
     await _notifications.zonedSchedule(
       id: reminder.notificationId,
       title: reminder.title,
-      body: '$cylinderName · Welding Gas Wallet',
+      body: '$cylinderName · Welding Wallet',
       scheduledDate: tz.TZDateTime.from(reminder.dueAt, tz.UTC),
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(

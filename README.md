@@ -1,12 +1,12 @@
-# Welding Gas Wallet
+# Welding Wallet
 
-Welding Gas Wallet is an offline-first Flutter app for recording welding-gas cylinders, suppliers, ownership, refill and exchange costs, and due-date reminders on Android and iOS.
+Welding Wallet is an offline-first Flutter app for recording welding-gas cylinders, suppliers, ownership, refill and exchange costs, and due-date reminders on Android and iOS.
 
 The former Jetpack Compose presentation layer has been removed. The active app is now Flutter, while the original Kotlin backend remains in `backend/` as a parity reference for its security-sensitive Android billing and storage tests. Shared production behavior lives in `lib/core/` and is used by both mobile platforms.
 
 ## Flutter interface
 
-The selected skin adapts the MIT-licensed [Inventorya](https://github.com/mina-android/Inventorya) dashboard language to Welding Gas Wallet:
+The selected skin adapts the MIT-licensed [Inventorya](https://github.com/mina-android/Inventorya) dashboard language to Welding Wallet:
 
 - dashboard title and strong uppercase section labels;
 - quick-action cards for add, refill, exchange and reminder;
