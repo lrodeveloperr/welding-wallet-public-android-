@@ -12,4 +12,8 @@ Inventorya is licensed under the MIT License. Copyright (c) 2025 Mina Samy. Its 
 
 Roboto Regular and Medium are distributed under the Apache License 2.0. Copyright 2011 The Roboto Project Authors.
 
+## Material Icons
+
+The Material Icons font used by the golden-render test is distributed under the Apache License 2.0. Copyright Google LLC.
+
 https://github.com/googlefonts/roboto-3-classic
