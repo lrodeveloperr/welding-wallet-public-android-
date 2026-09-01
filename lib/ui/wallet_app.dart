@@ -8,7 +8,6 @@ import '../app_controller.dart';
 import '../core/models.dart';
 import '../core/wallet_engine.dart';
 import '../core/wallet_repository.dart';
-import '../services/billing_service.dart';
 import 'theme.dart';
 
 class WeldingWalletApp extends StatefulWidget {
