@@ -36,6 +36,13 @@ jobs:
       - name: Apply upgrade
         run: python tool/apply_welding_wallet_upgrade.py
 
+      - name: Remove redundant re-export imports
+        shell: bash
+        run: |
+          sed -i "/import 'core\/consumables.dart';/d" lib/app_controller.dart
+          sed -i "/import 'consumables.dart';/d" lib/core/wallet_engine.dart
+          sed -i "/import '..\/core\/consumables.dart';/d" lib/ui/wallet_app.dart
+
       - name: Resolve packages
         run: flutter pub get
 
