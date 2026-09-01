@@ -42,6 +42,7 @@ jobs:
           sed -i "/import 'core\/consumables.dart';/d" lib/app_controller.dart
           sed -i "/import 'consumables.dart';/d" lib/core/wallet_engine.dart
           sed -i "/import '..\/core\/consumables.dart';/d" lib/ui/wallet_app.dart
+          git checkout -- .github/workflows/android-debug.yml
 
       - name: Resolve packages
         run: flutter pub get
@@ -67,6 +68,7 @@ jobs:
       - name: Commit upgrade
         shell: bash
         run: |
+          rm -f lib/l10n/app_localizations.dart lib/l10n/app_localizations_en.dart
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
