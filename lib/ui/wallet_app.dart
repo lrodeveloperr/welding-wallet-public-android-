@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app_controller.dart';
 import '../core/models.dart';
 import '../core/wallet_engine.dart';
+import '../core/wallet_repository.dart';
 import '../services/billing_service.dart';
 import 'theme.dart';
 
@@ -1707,12 +1708,12 @@ class _ReminderSheetState extends State<_ReminderSheet> {
               firstDate: DateTime.now(),
               lastDate: DateTime.now().add(const Duration(days: 3650)),
             );
-            if (!mounted || date == null) return;
+            if (!context.mounted || date == null) return;
             final time = await showTimePicker(
               context: context,
               initialTime: TimeOfDay.fromDateTime(dueAt),
             );
-            if (!mounted || time == null) return;
+            if (!context.mounted || time == null) return;
             setState(() {
               dueAt = DateTime(
                 date.year,
