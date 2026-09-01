@@ -1,9 +1,15 @@
-# Notice
+# Notices
 
-The Welding Gas Wallet UI shell uses interaction and layout ideas inspired by the open-source
-Expense Manager project by Naveen Kumar Kuppan (`nkuppan/expensemanager`, Apache License 2.0),
-including summary cards, filtered/date-oriented records, quick-create actions and Material 3
-navigation patterns. Welding Gas Wallet's domain model, copy, state flows and implementation are
-purpose-built for cylinder tracking and are not a finance-app fork.
+## Inventorya visual reference
 
-Upstream reference: https://github.com/nkuppan/expensemanager
+The Welding Gas Wallet Flutter interface is adapted from the information hierarchy and interaction language of Inventorya by Mina Samy:
+
+https://github.com/mina-android/Inventorya
+
+Inventorya is licensed under the MIT License. Copyright (c) 2025 Mina Samy. Its source application, name, logo and screenshots are not redistributed as app assets. Welding Gas Wallet uses its own Flutter implementation, content, palette and Material icons.
+
+## Roboto
+
+Roboto Regular and Medium are distributed under the Apache License 2.0. Copyright 2011 The Roboto Project Authors.
+
+https://github.com/googlefonts/roboto-3-classic

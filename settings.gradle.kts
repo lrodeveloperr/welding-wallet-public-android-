@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "WeldingGasWallet"
-include(":app", ":backend")
+include(":backend")

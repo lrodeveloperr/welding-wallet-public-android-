@@ -4,3 +4,13 @@ local.properties
 **/build/
 *.iml
 .DS_Store
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+coverage/
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/

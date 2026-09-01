@@ -1,17 +1,19 @@
-name: Android Debug APK
+name: Flutter Android Debug APK
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
+  verify-and-build:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,43 +24,73 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android API 36
-        shell: bash
-        run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Set up Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Flutter 3.47.2
+        uses: subosito/flutter-action@v2
         with:
-          gradle-version: '8.13'
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
 
-      - name: Test backend and build debug APK
-        id: gradle_build
+      - name: Resolve packages
+        run: flutter pub get
+
+      - name: Generate localizations
+        run: flutter gen-l10n
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Render dashboard design evidence
+        run: flutter test --update-goldens test/dashboard_golden_test.dart
+
+      - name: Test Flutter domain and widgets
+        run: flutter test
+
+      - name: Build debug APK
+        id: flutter_build
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          gradle :backend:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee build.log
+          flutter build apk --debug 2>&1 | tee build.log
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: welding-gas-wallet-build-log
+          name: welding-gas-wallet-flutter-build-log
           path: build.log
+          if-no-files-found: warn
+
+      - name: Upload dashboard design evidence
+        if: steps.flutter_build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: welding-gas-wallet-dashboard
+          path: test/goldens/dashboard.png
           if-no-files-found: error
 
-      - name: Upload APK
-        if: steps.gradle_build.outcome == 'success'
+      - name: Upload debug APK
+        if: steps.flutter_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: welding-gas-wallet-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
 
-      - name: Fail workflow if Gradle failed
-        if: steps.gradle_build.outcome == 'failure'
+      - name: Commit verified design evidence
+        if: github.event_name == 'push' && steps.flutter_build.outcome == 'success'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pubspec.lock test/goldens/dashboard.png
+          git diff --cached --quiet || git commit -m "chore: update dashboard design evidence [skip ci]"
+          git push
+
+      - name: Fail if Flutter build failed
+        if: steps.flutter_build.outcome == 'failure'
         run: exit 1

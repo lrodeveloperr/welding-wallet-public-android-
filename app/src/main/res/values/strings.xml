@@ -1,5 +1,0 @@
-<resources>
-    <string name="app_name">Welding Gas Wallet</string>
-    <string name="reminder_channel_name">Cylinder reminders</string>
-    <string name="reminder_channel_description">Refill, rental, lease and cylinder reminders</string>
-</resources>
