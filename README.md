@@ -28,7 +28,7 @@ The selected skin adapts the MIT-licensed [Inventorya](https://github.com/mina-a
 
 ## Build
 
-Requirements: Flutter 3.47.2, Dart 3.12 or newer, Android SDK 26+, and Xcode 15+ for iOS.
+Requirements: Flutter 3.47.2, Dart 3.13 or newer, Android SDK 26+, and Xcode 15+ for iOS.
 
 ```bash
 flutter pub get
