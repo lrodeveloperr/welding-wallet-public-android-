@@ -13,13 +13,11 @@ class StoredDocument {
 
 class DocumentStore {
   Future<StoredDocument?> pickAndStoreCertificate(String itemId) async {
-    final result = await FilePicker.platform.pickFiles(
+    final picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const <String>['pdf', 'jpg', 'jpeg', 'png'],
-      allowMultiple: false,
     );
-    if (result == null || result.files.isEmpty) return null;
-    final picked = result.files.single;
+    if (picked == null) return null;
     final sourcePath = picked.path;
     if (sourcePath == null || sourcePath.isEmpty) return null;
 
