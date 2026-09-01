@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:welding_gas_wallet/app_controller.dart';
 import 'package:welding_gas_wallet/core/models.dart';
@@ -8,6 +9,11 @@ import 'package:welding_gas_wallet/ui/wallet_app.dart';
 
 void main() {
   testWidgets('Inventorya-inspired wallet dashboard', (tester) async {
+    final fontLoader = FontLoader('Roboto')
+      ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
+      ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'));
+    await fontLoader.load();
+
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
