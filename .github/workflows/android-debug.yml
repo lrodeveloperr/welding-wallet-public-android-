@@ -61,7 +61,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: welding-gas-wallet-flutter-build-log
+          name: welding-wallet-flutter-build-log
           path: build.log
           if-no-files-found: warn
 
@@ -69,7 +69,7 @@ jobs:
         if: steps.flutter_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: welding-gas-wallet-dashboard
+          name: welding-wallet-dashboard
           path: test/goldens/dashboard.png
           if-no-files-found: error
 
@@ -77,7 +77,7 @@ jobs:
         if: steps.flutter_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: welding-gas-wallet-debug-apk
+          name: welding-wallet-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
 

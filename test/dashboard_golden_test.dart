@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:welding_gas_wallet/app_controller.dart';
-import 'package:welding_gas_wallet/core/models.dart';
-import 'package:welding_gas_wallet/core/wallet_engine.dart';
-import 'package:welding_gas_wallet/core/wallet_repository.dart';
-import 'package:welding_gas_wallet/ui/wallet_app.dart';
+import 'package:welding_wallet/app_controller.dart';
+import 'package:welding_wallet/core/models.dart';
+import 'package:welding_wallet/core/wallet_engine.dart';
+import 'package:welding_wallet/core/wallet_repository.dart';
+import 'package:welding_wallet/ui/wallet_app.dart';
 
 void main() {
   testWidgets('Inventorya-inspired wallet dashboard', (tester) async {
