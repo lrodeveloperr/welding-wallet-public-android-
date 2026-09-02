@@ -5,8 +5,9 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 
 import 'core/models.dart';
 import 'core/wallet_engine.dart';
-import 'services/billing_service.dart';
+import 'services/ad_service.dart';
 import 'services/backup_service.dart';
+import 'services/billing_service.dart';
 import 'services/document_store.dart';
 import 'services/reminder_service.dart';
 
@@ -26,16 +27,21 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   AppController({
     required this.engine,
     BillingService? billing,
+    AdService? ads,
     ReminderService? reminders,
     DocumentStore? documents,
     BackupService? backups,
   }) : billing = billing ?? BillingService(),
+       ads = ads ?? AdService(),
        reminders = reminders ?? ReminderService(),
        documents = documents ?? DocumentStore(),
-       backups = backups ?? BackupService();
+       backups = backups ?? BackupService() {
+    ads.addListener(_handleAdChange);
+  }
 
   final WalletEngine engine;
   final BillingService billing;
+  final AdService ads;
   final ReminderService reminders;
   final DocumentStore documents;
   final BackupService backups;
@@ -47,6 +53,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   int tabIndex = 0;
   StreamSubscription<Entitlement>? _entitlementSubscription;
   bool _observingLifecycle = false;
+
+  void _handleAdChange() => notifyListeners();
 
   Future<void> initialize() async {
     try {
@@ -317,6 +325,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     await run(billing.openManagement);
   }
 
+  Future<void> showAdPrivacyOptions() async {
+    await run(ads.showPrivacyOptions);
+  }
+
   Future<bool> exportBackup() async {
     clearMessage();
     try {
@@ -378,6 +390,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
     _entitlementSubscription?.cancel();
+    ads.removeListener(_handleAdChange);
+    ads.dispose();
     unawaited(billing.dispose());
     super.dispose();
   }

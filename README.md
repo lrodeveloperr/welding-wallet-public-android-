@@ -17,8 +17,9 @@ The selected skin adapts the MIT-licensed [Inventorya](https://github.com/mina-a
 
 ## Preserved rules
 
-- Three current cylinders are editable on the free plan. A fourth cylinder draft is stored and can resume once after a store-verified Pro purchase.
-- Three active consumable batches are editable on the free plan. A fourth consumable draft uses the same Pro entitlement and resumes once after verification.
+- Free includes one fixed, non-personalized banner, three active cylinders and three active consumable batches.
+- Pro removes ads and supports unlimited records.
+- A fourth cylinder or consumable draft is stored and can resume once after a store-verified Pro purchase.
 - Downgrades retain every saved cylinder and consumable record; gated items are not silently deleted.
 - Free users choose which three current cylinders and three active batches remain editable after a downgrade.
 - Suppliers referenced by cylinders, consumables, events or pending drafts cannot be deleted.
@@ -61,6 +62,18 @@ Configure this non-consumable in App Store Connect:
 - `com.gooduse.weldinggaswallet.pro.lifetime`
 
 The product identifiers retain the legacy `weldinggaswallet` token so existing Google Play products remain compatible with the visible rename. Android refreshes store-confirmed subscription access on startup/resume and caches it for 24 hours. The iOS non-consumable is restored as a lifetime entitlement. Private wallet data and backups never grant Pro.
+
+Free-plan ads use Google User Messaging Platform consent, request non-personalized ads and occupy one fixed banner rail below navigation. Debug builds use Google's demo IDs. Release builds require app and banner IDs belonging to publisher `8054612600809568`; demo and foreign banner IDs are rejected.
+
+Android release configuration:
+
+```bash
+WELDING_ADMOB_ANDROID_APP_ID=ca-app-pub-8054612600809568~APP_ID \
+flutter build appbundle --release \
+  --dart-define=WELDING_ANDROID_ADMOB_BANNER_ID=ca-app-pub-8054612600809568/BANNER_ID
+```
+
+For iOS, set the `WELDING_ADMOB_IOS_APP_ID` Xcode build setting and pass `WELDING_IOS_ADMOB_BANNER_ID` as a Dart define. Replace the placeholders with the app-specific live IDs from AdMob before a store build.
 
 ## Privacy and support
 

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -10,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app_controller.dart';
 import '../core/models.dart';
+import '../services/ad_service.dart';
 import 'theme.dart';
 
 class WeldingWalletApp extends StatefulWidget {
@@ -61,15 +64,19 @@ class _WeldingWalletAppState extends State<WeldingWalletApp> {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: _WalletRoot(controller: widget.controller),
+        home: _WalletRoot(
+          controller: widget.controller,
+          enableAds: widget.autoInitialize,
+        ),
       );
     },
   );
 }
 
 class _WalletRoot extends StatelessWidget {
-  const _WalletRoot({required this.controller});
+  const _WalletRoot({required this.controller, required this.enableAds});
   final AppController controller;
+  final bool enableAds;
 
   @override
   Widget build(BuildContext context) {
@@ -93,14 +100,23 @@ class _WalletRoot extends StatelessWidget {
         ),
       );
     }
-    return _WalletShell(controller: controller, wallet: wallet);
+    return _WalletShell(
+      controller: controller,
+      wallet: wallet,
+      enableAds: enableAds,
+    );
   }
 }
 
 class _WalletShell extends StatelessWidget {
-  const _WalletShell({required this.controller, required this.wallet});
+  const _WalletShell({
+    required this.controller,
+    required this.wallet,
+    required this.enableAds,
+  });
   final AppController controller;
   final WalletData wallet;
+  final bool enableAds;
 
   @override
   Widget build(BuildContext context) {
@@ -138,8 +154,11 @@ class _WalletShell extends StatelessWidget {
         onRestore: () => _restoreBackup(context, controller),
         onDelete: () => _deleteWallet(context, controller),
         onFreeRecords: () => _openFreeRecordPicker(context, controller),
+        privacyOptionsRequired: controller.ads.privacyOptionsRequired,
+        onPrivacyOptions: controller.showAdPrivacyOptions,
       ),
     ];
+    final isPro = wallet.entitlementCache.isProAt(DateTime.now().toUtc());
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -157,31 +176,125 @@ class _WalletShell extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: controller.tabIndex,
-        onDestinationSelected: controller.selectTab,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.propane_tank_outlined),
-            selectedIcon: Icon(Icons.propane_tank),
-            label: 'Gas',
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          NavigationBar(
+            selectedIndex: controller.tabIndex,
+            onDestinationSelected: controller.selectTab,
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.propane_tank_outlined),
+                selectedIcon: Icon(Icons.propane_tank),
+                label: 'Gas',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.inventory_2_outlined),
+                selectedIcon: Icon(Icons.inventory_2),
+                label: 'Consumables',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined),
+                selectedIcon: Icon(Icons.receipt_long),
+                label: 'History',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: 'Settings',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2),
-            label: 'Consumables',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'History',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
+          if (enableAds && !isPro) _FreeBanner(service: controller.ads),
         ],
+      ),
+    );
+  }
+}
+
+class _FreeBanner extends StatefulWidget {
+  const _FreeBanner({required this.service});
+
+  final AdService service;
+
+  @override
+  State<_FreeBanner> createState() => _FreeBannerState();
+}
+
+class _FreeBannerState extends State<_FreeBanner> {
+  BannerAd? _banner;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.service.addListener(_sync);
+    unawaited(widget.service.initialize());
+    _sync();
+  }
+
+  void _sync() {
+    if (!mounted) return;
+    if (!widget.service.canLoadAds) {
+      _banner?.dispose();
+      _banner = null;
+      if (_loaded) setState(() => _loaded = false);
+      return;
+    }
+    if (_banner != null) return;
+
+    final banner = BannerAd(
+      adUnitId: widget.service.bannerUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(nonPersonalizedAds: true),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          if (!mounted) {
+            ad.dispose();
+            return;
+          }
+          setState(() => _loaded = true);
+        },
+        onAdFailedToLoad: (ad, _) {
+          ad.dispose();
+          if (!mounted) return;
+          setState(() {
+            _banner = null;
+            _loaded = false;
+          });
+        },
+      ),
+    );
+    _banner = banner;
+    banner.load();
+  }
+
+  @override
+  void dispose() {
+    widget.service.removeListener(_sync);
+    _banner?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final banner = _banner;
+    if (!_loaded || banner == null) return const SizedBox.shrink();
+    return Semantics(
+      label: 'Advertisement',
+      child: Container(
+        height: 51,
+        width: double.infinity,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: WalletColors.border)),
+        ),
+        child: SizedBox(
+          width: banner.size.width.toDouble(),
+          height: banner.size.height.toDouble(),
+          child: AdWidget(ad: banner),
+        ),
       ),
     );
   }
@@ -1864,6 +1977,8 @@ class _SettingsScreen extends StatelessWidget {
     required this.onRestore,
     required this.onDelete,
     required this.onFreeRecords,
+    required this.privacyOptionsRequired,
+    required this.onPrivacyOptions,
   });
   final WalletData wallet;
   final VoidCallback onSuppliers;
@@ -1878,6 +1993,8 @@ class _SettingsScreen extends StatelessWidget {
   final VoidCallback onRestore;
   final VoidCallback onDelete;
   final VoidCallback onFreeRecords;
+  final bool privacyOptionsRequired;
+  final VoidCallback onPrivacyOptions;
 
   @override
   Widget build(BuildContext context) {
@@ -1924,8 +2041,8 @@ class _SettingsScreen extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           isPro
-                              ? 'All cylinders and consumable batches are editable.'
-                              : 'Up to three current cylinders and three active consumable batches.',
+                              ? 'No ads · Unlimited records'
+                              : 'Cylinder limit: 3 · Batch limit: 3 · Banner',
                           style: const TextStyle(color: Color(0xFFBFC9D7)),
                         ),
                       ],
@@ -2112,6 +2229,13 @@ class _SettingsScreen extends StatelessWidget {
           const SizedBox(height: 10),
           _SettingsCard(
             children: [
+              if (privacyOptionsRequired)
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Privacy choices'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onPrivacyOptions,
+                ),
               _LinkTile(label: 'Privacy policy', path: 'privacy'),
               _LinkTile(label: 'Terms of use', path: 'terms'),
               _LinkTile(label: 'Safety disclaimer', path: 'disclaimer'),
@@ -2292,6 +2416,13 @@ class _OnboardingScreenState extends State<_OnboardingScreen> {
                               path: 'disclaimer',
                             ),
                           ],
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'Free includes one non-personalized banner. Pro removes ads.',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                         CheckboxListTile(
                           value: accepted,
@@ -3643,21 +3774,26 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         ),
         const SizedBox(height: 18),
         Text(
-          'Keep your whole welding wallet editable',
+          'Pro: no ads, unlimited records',
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 8),
         Text(
           Platform.isIOS
-              ? 'One purchase removes both three-record limits.'
-              : 'Pro removes both three-record limits. History stays saved if Pro ends.',
+              ? 'One purchase. Every record stays editable.'
+              : 'Unlimited while Pro is active. Saved history remains if Pro ends.',
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 20),
         const _FeatureLine(
           icon: Icons.all_inclusive,
-          title: 'Unlimited welding records',
-          body: 'Add and edit every current cylinder and active consumable batch.',
+          title: 'Unlimited records',
+          body: 'Add and edit every active cylinder and consumable batch.',
+        ),
+        const _FeatureLine(
+          icon: Icons.block,
+          title: 'No ads',
+          body: 'The bottom banner is removed.',
         ),
         const _FeatureLine(
           icon: Icons.lock_outline,

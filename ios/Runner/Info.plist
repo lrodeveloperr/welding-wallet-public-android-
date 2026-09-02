@@ -22,6 +22,8 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GADApplicationIdentifier</key>
+	<string>$(ADMOB_APP_ID)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan cylinder, consumable, barcode and QR labels into Welding Wallet.</string>
 	<key>LSRequiresIPhoneOS</key>

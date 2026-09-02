@@ -296,6 +296,39 @@ void main() {
     },
   );
 
+  test('Pro supports unlimited cylinder and consumable records', () async {
+    for (var index = 1; index <= 3; index++) {
+      await engine.addOrGate(draft('Cylinder $index'));
+    }
+    await engine.addOrGate(draft('Cylinder 4'));
+
+    final entitlement = Entitlement(
+      tier: AccessTier.pro,
+      source: EntitlementSource.googlePlaySubscription,
+      validUntil: DateTime.utc(2026, 9, 2),
+    );
+    expect(await engine.resumePendingDraft(entitlement), isNotNull);
+
+    for (var index = 5; index <= 8; index++) {
+      expect(
+        (await engine.addOrGate(draft('Cylinder $index'))).wasAdded,
+        isTrue,
+      );
+    }
+    for (var index = 1; index <= 8; index++) {
+      expect(
+        (await engine.addConsumableOrGate(
+          consumableDraft('LOT-PRO-$index'),
+        )).wasAdded,
+        isTrue,
+      );
+    }
+
+    final wallet = await engine.snapshot();
+    expect(wallet.cylinders, hasLength(8));
+    expect(wallet.consumables, hasLength(8));
+  });
+
   test(
     'consumable codes cannot collide with another batch or a cylinder serial',
     () async {
