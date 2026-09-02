@@ -58,8 +58,71 @@ void main() {
     await engine.recordExchange(cylinder.id, newSerialNumber: 'NEW-2');
     final wallet = await engine.snapshot();
     expect(wallet.cylinders.single.serialNumber, 'NEW-2');
+    expect(wallet.cylinders.single.lifecycle, CylinderLifecycle.active);
+    expect(wallet.cylinders.single.state, CylinderState.ready);
     expect(wallet.events.last.note, contains('Previous serial: OLD-1'));
     expect(wallet.events.last.note, contains('New serial: NEW-2'));
+  });
+
+  test('status changes take one action and refill or exchange resets Ready', () async {
+    final result = await engine.addOrGate(
+      AddCylinderDraft(
+        nickname: '',
+        gasType: 'Argon',
+        relationship: RelationshipType.owned,
+        capacityValue: 80,
+        capacityUnit: 'ft3',
+      ),
+    );
+    final cylinder = result.cylinder!;
+    expect(cylinder.nickname, 'Argon · 80 ft³');
+    expect(cylinder.state, CylinderState.ready);
+
+    await engine.changeCylinderState(cylinder.id, CylinderState.low);
+    var wallet = await engine.snapshot();
+    expect(wallet.cylinders.single.state, CylinderState.low);
+    expect(wallet.events.last.type, CylinderEventType.stateChanged);
+
+    await engine.recordRefill(cylinder.id);
+    wallet = await engine.snapshot();
+    expect(wallet.cylinders.single.state, CylinderState.ready);
+    expect(wallet.events.last.type, CylinderEventType.refill);
+
+    await engine.changeCylinderState(cylinder.id, CylinderState.empty);
+    await engine.recordExchange(cylinder.id, newSerialNumber: 'NEW-1');
+    wallet = await engine.snapshot();
+    expect(wallet.cylinders.single.state, CylinderState.ready);
+    expect(wallet.cylinders.single.lifecycle, CylinderLifecycle.active);
+    expect(wallet.events.last.type, CylinderEventType.exchange);
+  });
+
+  test('legacy cylinders without a status default to Ready', () {
+    final encoded = Cylinder(
+      id: 'legacy',
+      nickname: 'Legacy',
+      gasType: 'Argon',
+      relationship: RelationshipType.owned,
+      lifecycle: CylinderLifecycle.exchanged,
+      createdAt: DateTime.utc(2025),
+      updatedAt: DateTime.utc(2025),
+    ).toJson()
+      ..remove('state');
+    expect(Cylinder.fromJson(encoded).state, CylinderState.ready);
+  });
+
+  test('unsupported capacity unit is rejected', () {
+    expect(
+      () => engine.addOrGate(
+        AddCylinderDraft(
+          nickname: '',
+          gasType: 'Argon',
+          relationship: RelationshipType.owned,
+          capacityValue: 80,
+          capacityUnit: 'gallons',
+        ),
+      ),
+      throwsA(isA<WalletRuleException>()),
+    );
   });
 
   test('verified Pro resumes a pending cylinder exactly once', () async {

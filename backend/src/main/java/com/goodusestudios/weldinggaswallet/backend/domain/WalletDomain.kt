@@ -3,7 +3,8 @@ package com.goodusestudios.weldinggaswallet.backend.domain
 import java.time.Instant
 import java.util.Locale
 
-const val WALLET_SCHEMA_VERSION: Int = 3
+const val WALLET_SCHEMA_VERSION: Int = 4
+const val MINIMUM_SUPPORTED_WALLET_SCHEMA_VERSION: Int = 3
 const val FREE_EDITABLE_CYLINDER_LIMIT: Int = 3
 const val MAXIMUM_BACKUP_BYTES: Int = 5 * 1024 * 1024
 const val WELDING_GAS_WALLET_ANDROID_PACKAGE_NAME: String =
@@ -15,6 +16,8 @@ val SUPPORTED_LOCALES: List<String> = listOf(
     "hu", "sv", "nb", "da", "fi", "tr", "ar", "hi", "bn", "id",
     "vi", "th", "ja", "ko", "zh-Hans", "zh-Hant", "uk", "el", "ms", "fil",
 )
+
+val CYLINDER_CAPACITY_UNITS: Set<String> = setOf("ft3", "L", "m3", "kg", "lb")
 
 val ISO_4217_CODES: Set<String> = setOf(
     "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN",
@@ -41,8 +44,10 @@ enum class AccessTier { free, pro }
 enum class EntitlementSource { none, googlePlaySubscription }
 enum class RelationshipType { owned, rented, leased, deposit, notSure }
 enum class CylinderLifecycle { active, returned, exchanged, archived }
+enum class CylinderState { ready, low, empty, away }
 enum class CylinderEventType {
     created,
+    stateChanged,
     acquisitionUpdated,
     cylinderUpdated,
     refill,
@@ -104,6 +109,34 @@ fun isSupportedLocaleCandidate(candidate: String): Boolean {
 }
 
 fun isRtlLocale(locale: String): Boolean = canonicalLocale(locale) == "ar"
+
+fun defaultCylinderCapacityUnitForLocale(locale: String): String {
+    val region = Locale.forLanguageTag(locale.trim().replace('_', '-'))
+        .country
+        .uppercase(Locale.ROOT)
+    return if (region == "US" || region == "CA") "ft3" else "L"
+}
+
+fun capacityUnitLabel(unit: String): String = when (unit) {
+    "ft3" -> "ft³"
+    "m3" -> "m³"
+    else -> unit
+}
+
+fun automaticCylinderName(
+    gasType: String,
+    capacityValue: Double?,
+    capacityUnit: String?,
+): String {
+    val gas = gasType.trim()
+    if (capacityValue == null || capacityUnit.isNullOrBlank()) return gas
+    val amount = if (capacityValue % 1.0 == 0.0) {
+        capacityValue.toLong().toString()
+    } else {
+        capacityValue.toString()
+    }
+    return "$gas · $amount ${capacityUnitLabel(capacityUnit)}"
+}
 
 fun normalizedCurrency(candidate: String?, fallback: String = "USD"): String {
     val value = candidate.orEmpty().trim().uppercase(Locale.ROOT)
@@ -216,6 +249,7 @@ data class Cylinder(
     val gasType: String,
     val relationship: RelationshipType,
     val lifecycle: CylinderLifecycle,
+    val state: CylinderState = CylinderState.ready,
     val createdAt: Instant,
     val updatedAt: Instant,
     val capacityValue: Double? = null,
@@ -333,7 +367,7 @@ data class WalletData(
                     locale = safeLocale,
                     currencyCode = normalizedCurrency(currencyCode, defaultCurrencyForLocale(safeLocale)),
                     defaultMassUnit = "kg",
-                    defaultVolumeUnit = "L",
+                    defaultVolumeUnit = defaultCylinderCapacityUnitForLocale(locale),
                     remindersEnabled = false,
                     onboardingComplete = false,
                 ),

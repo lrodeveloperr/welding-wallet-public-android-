@@ -122,8 +122,18 @@ class _WalletShell extends StatelessWidget {
       _DashboardScreen(
         wallet: wallet,
         onAddCylinder: () => _openAddCylinder(context, controller),
-        onReminder: () => _openReminder(context, controller),
         onCylinder: (cylinder) => _openCylinder(context, controller, cylinder),
+        onState: (cylinder, state) {
+          unawaited(
+            controller.run(
+              () => controller.engine.changeCylinderState(cylinder.id, state),
+              success: '${cylinderStateLabel(state)}.',
+            ),
+          );
+        },
+        onReminder: (cylinder) {
+          unawaited(_openReminder(context, controller, target: cylinder));
+        },
       ),
       _ActivityScreen(wallet: wallet),
       _SettingsScreen(
@@ -294,14 +304,16 @@ class _DashboardScreen extends StatelessWidget {
   const _DashboardScreen({
     required this.wallet,
     required this.onAddCylinder,
-    required this.onReminder,
     required this.onCylinder,
+    required this.onState,
+    required this.onReminder,
   });
 
   final WalletData wallet;
   final VoidCallback onAddCylinder;
-  final VoidCallback onReminder;
   final ValueChanged<Cylinder> onCylinder;
+  final void Function(Cylinder cylinder, CylinderState state) onState;
+  final ValueChanged<Cylinder> onReminder;
 
   @override
   Widget build(BuildContext context) {
@@ -339,74 +351,26 @@ class _DashboardScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 28),
-              const _SectionLabel('QUICK ACTIONS'),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  const columns = 2;
-                  return GridView.count(
-                    crossAxisCount: columns,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: constraints.maxWidth >= 720 ? 2.6 : 1.42,
-                    children: [
-                      _QuickAction(
-                        label: 'Add cylinder',
-                        caption: 'Gas record',
-                        icon: Icons.propane_tank_outlined,
-                        color: WalletColors.green,
-                        soft: WalletColors.greenSoft,
-                        onTap: onAddCylinder,
-                      ),
-                      _QuickAction(
-                        label: 'Reminder',
-                        caption: 'Plan ahead',
-                        icon: Icons.notifications_active_outlined,
-                        color: WalletColors.violet,
-                        soft: WalletColors.violetSoft,
-                        onTap: onReminder,
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 28),
-              const _SectionLabel('SUMMARY & COUNTS'),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: _SummaryCard(
-                  label: 'GAS',
-                  value: '${current.length}',
-                  detail: current.length == 1
-                      ? 'current cylinder'
-                      : 'current cylinders',
-                  icon: Icons.propane_tank_outlined,
-                  color: WalletColors.blue,
-                ),
-              ),
-              const SizedBox(height: 28),
-              Row(
-                children: [
-                  const Expanded(child: _SectionLabel('GAS CYLINDERS')),
-                  Text(
-                    '${current.length} current',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
               if (current.isEmpty)
                 _EmptyCard(
                   icon: Icons.propane_tank_outlined,
-                  title: 'No cylinders yet',
-                  body: 'Add your first cylinder to track refills, exchanges, costs and return dates.',
-                  action: 'Add cylinder',
+                  title: 'No cylinders',
+                  body: 'Add a cylinder to track its status, refill and cost.',
+                  action: 'Add',
                   onAction: onAddCylinder,
                 )
-              else
+              else ...[
+                Row(
+                  children: [
+                    const Expanded(child: _SectionLabel('CYLINDERS')),
+                    TextButton.icon(
+                      onPressed: onAddCylinder,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 ...current.map(
                   (cylinder) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -414,9 +378,12 @@ class _DashboardScreen extends StatelessWidget {
                       cylinder: cylinder,
                       wallet: wallet,
                       onTap: () => onCylinder(cylinder),
+                      onState: (state) => onState(cylinder, state),
+                      onReminder: () => onReminder(cylinder),
                     ),
                   ),
                 ),
+              ],
               if (past.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Row(
@@ -436,6 +403,8 @@ class _DashboardScreen extends StatelessWidget {
                       cylinder: cylinder,
                       wallet: wallet,
                       onTap: () => onCylinder(cylinder),
+                      onState: (_) {},
+                      onReminder: () {},
                     ),
                   ),
                 ),
@@ -448,131 +417,20 @@ class _DashboardScreen extends StatelessWidget {
   }
 }
 
-class _QuickAction extends StatelessWidget {
-  const _QuickAction({
-    required this.label,
-    required this.caption,
-    required this.icon,
-    required this.color,
-    required this.soft,
-    required this.onTap,
-  });
-  final String label;
-  final String caption;
-  final IconData icon;
-  final Color color;
-  final Color soft;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: soft,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  caption,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
-    required this.label,
-    required this.value,
-    required this.detail,
-    required this.icon,
-    required this.color,
-  });
-  final String label;
-  final String value;
-  final String detail;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 19),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 3),
-          Text(detail, style: Theme.of(context).textTheme.bodyMedium),
-        ],
-      ),
-    ),
-  );
-}
-
 class _CylinderCard extends StatelessWidget {
   const _CylinderCard({
     required this.cylinder,
     required this.wallet,
     required this.onTap,
+    required this.onState,
+    required this.onReminder,
   });
+
   final Cylinder cylinder;
   final WalletData wallet;
   final VoidCallback onTap;
+  final ValueChanged<CylinderState> onState;
+  final VoidCallback onReminder;
 
   @override
   Widget build(BuildContext context) {
@@ -581,86 +439,175 @@ class _CylinderCard extends StatelessWidget {
     );
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: WalletColors.blueSoft,
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: const Icon(Icons.propane_tank, color: WalletColors.blue),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      cylinder.nickname,
-                      style: Theme.of(context).textTheme.titleMedium,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: WalletColors.blueSoft,
+                      borderRadius: BorderRadius.circular(13),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      <String>[
-                        cylinder.gasType,
-                        if (cylinder.capacityValue != null)
-                          '${formatDecimal(cylinder.capacityValue!)} ${cylinder.capacityUnit ?? ''}'
-                              .trim(),
-                        if (supplier != null) supplier.name,
-                      ].join(' · '),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                    child: const Icon(
+                      Icons.propane_tank,
+                      color: WalletColors.blue,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          cylinder.nickname,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          <String>[
+                            cylinder.gasType,
+                            if (cylinder.capacityValue != null)
+                              '${formatDecimal(cylinder.capacityValue!)} ${capacityUnitLabel(cylinder.capacityUnit ?? '')}'
+                                  .trim(),
+                            if (supplier != null) supplier.name,
+                          ].join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _StatusPill(cylinder),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, color: WalletColors.muted),
+                ],
               ),
-              const SizedBox(width: 8),
-              _StatusPill(cylinder.lifecycle),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, color: WalletColors.muted),
-            ],
+            ),
           ),
-        ),
+          if (cylinder.consumesCurrentSlot) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: _CylinderStateActions(
+                state: cylinder.state,
+                onChanged: onState,
+                onReminder: onReminder,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill(this.lifecycle);
-  final CylinderLifecycle lifecycle;
+class _CylinderStateActions extends StatelessWidget {
+  const _CylinderStateActions({
+    required this.state,
+    required this.onChanged,
+    this.onReminder,
+  });
+
+  final CylinderState state;
+  final ValueChanged<CylinderState> onChanged;
+  final VoidCallback? onReminder;
 
   @override
   Widget build(BuildContext context) {
-    final (label, color, soft) = switch (lifecycle) {
-      CylinderLifecycle.active => (
-        'ACTIVE',
-        WalletColors.green,
-        WalletColors.greenSoft,
-      ),
-      CylinderLifecycle.exchanged => (
-        'EXCHANGED',
-        WalletColors.amber,
-        WalletColors.amberSoft,
-      ),
-      CylinderLifecycle.returned => (
-        'RETURNED',
-        WalletColors.muted,
-        WalletColors.background,
-      ),
-      CylinderLifecycle.archived => (
-        'ARCHIVED',
-        WalletColors.muted,
-        WalletColors.background,
-      ),
+    final actions = switch (state) {
+      CylinderState.ready => const <(CylinderState, String)>[
+        (CylinderState.low, 'Low'),
+        (CylinderState.empty, 'Empty'),
+        (CylinderState.away, 'Away'),
+      ],
+      CylinderState.low => const <(CylinderState, String)>[
+        (CylinderState.ready, 'Ready'),
+        (CylinderState.empty, 'Empty'),
+        (CylinderState.away, 'Away'),
+      ],
+      CylinderState.empty => const <(CylinderState, String)>[
+        (CylinderState.ready, 'Ready'),
+        (CylinderState.away, 'Away'),
+      ],
+      CylinderState.away => const <(CylinderState, String)>[
+        (CylinderState.ready, 'Ready'),
+        (CylinderState.empty, 'Empty'),
+      ],
     };
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 2,
+      children: [
+        for (final action in actions)
+          TextButton(
+            onPressed: () => onChanged(action.$1),
+            child: Text(action.$2),
+          ),
+        if (state != CylinderState.ready && onReminder != null)
+          TextButton(onPressed: onReminder, child: const Text('Reminder')),
+      ],
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill(this.cylinder);
+  final Cylinder cylinder;
+
+  @override
+  Widget build(BuildContext context) {
+    late final (String, Color, Color) status;
+    if (cylinder.consumesCurrentSlot) {
+      status = switch (cylinder.state) {
+        CylinderState.ready => (
+          'READY',
+          WalletColors.green,
+          WalletColors.greenSoft,
+        ),
+        CylinderState.low => (
+          'LOW',
+          WalletColors.amber,
+          WalletColors.amberSoft,
+        ),
+        CylinderState.empty => (
+          'EMPTY',
+          WalletColors.danger,
+          const Color(0xFFFFECEC),
+        ),
+        CylinderState.away => (
+          'AWAY',
+          WalletColors.violet,
+          WalletColors.violetSoft,
+        ),
+      };
+    } else {
+      status = switch (cylinder.lifecycle) {
+        CylinderLifecycle.returned => (
+          'RETURNED',
+          WalletColors.muted,
+          WalletColors.background,
+        ),
+        CylinderLifecycle.archived => (
+          'ARCHIVED',
+          WalletColors.muted,
+          WalletColors.background,
+        ),
+        CylinderLifecycle.active || CylinderLifecycle.exchanged => (
+          'READY',
+          WalletColors.green,
+          WalletColors.greenSoft,
+        ),
+      };
+    }
+    final (label, color, soft) = status;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
@@ -1097,8 +1044,10 @@ class _SettingsScreen extends StatelessWidget {
                   underline: const SizedBox.shrink(),
                   items: const ['L', 'm3', 'ft3']
                       .map(
-                        (value) =>
-                            DropdownMenuItem(value: value, child: Text(value)),
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: Text(capacityUnitLabel(value)),
+                        ),
                       )
                       .toList(),
                   onChanged: (value) {
@@ -1829,9 +1778,16 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
   final capacity = TextEditingController();
   final serial = TextEditingController();
   String gas = 'Argon';
+  late String capacityUnit;
   RelationshipType relationship = RelationshipType.owned;
   String? supplierId;
   String? formError;
+
+  @override
+  void initState() {
+    super.initState();
+    capacityUnit = widget.controller.wallet!.settings.defaultVolumeUnit;
+  }
 
   @override
   void dispose() {
@@ -1844,8 +1800,8 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
   @override
   Widget build(BuildContext context) => _FormSheet(
     title: 'Add cylinder',
-    subtitle: 'Start with the details you know. You can add costs later.',
-    action: 'Save cylinder',
+    subtitle: 'Choose the gas. Everything else is optional.',
+    action: 'Save',
     onAction: () {
       final capacityText = capacity.text.trim();
       final parsedCapacity = capacityText.isEmpty
@@ -1854,17 +1810,15 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
       final normalizedCode = serial.text.trim().toLowerCase();
       final duplicateCode =
           normalizedCode.isNotEmpty &&
-          (widget.controller.wallet!.cylinders.any(
+          widget.controller.wallet!.cylinders.any(
             (value) =>
                 value.serialNumber?.trim().toLowerCase() == normalizedCode,
-          ));
-      final error = name.text.trim().isEmpty
-          ? 'Enter a name.'
-          : capacityText.isNotEmpty &&
-                (parsedCapacity == null || parsedCapacity <= 0)
+          );
+      final error = capacityText.isNotEmpty &&
+              (parsedCapacity == null || parsedCapacity <= 0)
           ? 'Check capacity.'
           : duplicateCode
-          ? 'Code already saved.'
+          ? 'Serial already saved.'
           : null;
       if (error != null) {
         setState(() => formError = error);
@@ -1877,7 +1831,7 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
           gasType: gas,
           relationship: relationship,
           capacityValue: parsedCapacity,
-          capacityUnit: widget.controller.wallet!.settings.defaultMassUnit,
+          capacityUnit: parsedCapacity == null ? null : capacityUnit,
           serialNumber: serial.text,
           supplierId: supplierId,
         ),
@@ -1888,19 +1842,9 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
         _InlineError(formError!),
         const SizedBox(height: 12),
       ],
-      TextField(
-        controller: name,
-        autofocus: true,
-        textInputAction: TextInputAction.next,
-        decoration: const InputDecoration(
-          labelText: 'Cylinder name',
-          hintText: 'Workshop argon',
-        ),
-      ),
-      const SizedBox(height: 14),
       DropdownButtonFormField<String>(
         initialValue: gas,
-        decoration: const InputDecoration(labelText: 'Gas type'),
+        decoration: const InputDecoration(labelText: 'Gas'),
         items:
             const [
                   'Argon',
@@ -1918,6 +1862,50 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
         onChanged: (value) => setState(() => gas = value ?? gas),
       ),
       const SizedBox(height: 14),
+      Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: TextField(
+              controller: capacity,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Capacity',
+                hintText: '80',
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: capacityUnit,
+              decoration: const InputDecoration(labelText: 'Unit'),
+              items: const ['ft3', 'L', 'm3', 'kg', 'lb']
+                  .map(
+                    (value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(capacityUnitLabel(value)),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) =>
+                  setState(() => capacityUnit = value ?? capacityUnit),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: name,
+        textInputAction: TextInputAction.next,
+        decoration: const InputDecoration(
+          labelText: 'Name (optional)',
+          helperText: 'Uses gas and size when blank.',
+        ),
+      ),
+      const SizedBox(height: 14),
       DropdownButtonFormField<RelationshipType>(
         initialValue: relationship,
         decoration: const InputDecoration(labelText: 'Ownership'),
@@ -1933,28 +1921,9 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
             setState(() => relationship = value ?? relationship),
       ),
       const SizedBox(height: 14),
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: capacity,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: InputDecoration(
-                labelText:
-                    'Capacity (${widget.controller.wallet!.settings.defaultMassUnit})',
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: serial,
-              decoration: const InputDecoration(labelText: 'Serial (optional)'),
-            ),
-          ),
-        ],
+      TextField(
+        controller: serial,
+        decoration: const InputDecoration(labelText: 'Serial (optional)'),
       ),
       const SizedBox(height: 14),
       _SupplierField(
@@ -2266,9 +2235,28 @@ class _CylinderSheet extends StatelessWidget {
                     ],
                   ),
                 ),
-                _StatusPill(cylinder.lifecycle),
+                _StatusPill(cylinder),
               ],
             ),
+            if (cylinder.consumesCurrentSlot) ...[
+              const SizedBox(height: 18),
+              const _SectionLabel('STATUS'),
+              const SizedBox(height: 6),
+              _CylinderStateActions(
+                state: cylinder.state,
+                onChanged: (state) {
+                  unawaited(
+                    controller.run(
+                      () => controller.engine.changeCylinderState(
+                        cylinder.id,
+                        state,
+                      ),
+                      success: '${cylinderStateLabel(state)}.',
+                    ),
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 22),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -2287,7 +2275,7 @@ class _CylinderSheet extends StatelessWidget {
                         label: 'CAPACITY',
                         value: cylinder.capacityValue == null
                             ? '—'
-                            : '${formatDecimal(cylinder.capacityValue!)} ${cylinder.capacityUnit ?? ''}',
+                            : '${formatDecimal(cylinder.capacityValue!)} ${capacityUnitLabel(cylinder.capacityUnit ?? '')}',
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2927,6 +2915,7 @@ String eventLabel(CylinderEventType type) => switch (type) {
   CylinderEventType.created => 'Cylinder added',
   CylinderEventType.acquisitionUpdated => 'Acquisition updated',
   CylinderEventType.cylinderUpdated => 'Cylinder updated',
+  CylinderEventType.stateChanged => 'Status changed',
   CylinderEventType.refill => 'Refill recorded',
   CylinderEventType.exchange => 'Cylinder exchanged',
   CylinderEventType.purchase => 'Purchase recorded',
@@ -2960,6 +2949,7 @@ IconData eventIcon(CylinderEventType type) => switch (type) {
   CylinderEventType.reminderUpdated ||
   CylinderEventType.reminderCompleted ||
   CylinderEventType.reminderDeleted => Icons.notifications_outlined,
+  CylinderEventType.stateChanged => Icons.sync_alt,
   CylinderEventType.returned => Icons.assignment_return_outlined,
   CylinderEventType.archived => Icons.archive_outlined,
   _ => Icons.history,

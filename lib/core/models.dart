@@ -1,6 +1,6 @@
 import 'dart:collection';
 
-const int walletSchemaVersion = 5;
+const int walletSchemaVersion = 6;
 const int freeEditableCylinderLimit = 3;
 const int maximumBackupBytes = 5 * 1024 * 1024;
 
@@ -45,10 +45,13 @@ enum RelationshipType { owned, rented, leased, deposit, notSure }
 
 enum CylinderLifecycle { active, returned, exchanged, archived }
 
+enum CylinderState { ready, low, empty, away }
+
 enum CylinderEventType {
   created,
   acquisitionUpdated,
   cylinderUpdated,
+  stateChanged,
   refill,
   exchange,
   purchase,
@@ -99,6 +102,51 @@ String canonicalLocale(String? candidate) {
     (locale) => locale.split('-').first == language,
     orElse: () => 'en',
   );
+}
+
+const Set<String> cylinderCapacityUnits = <String>{
+  'ft3',
+  'L',
+  'm3',
+  'kg',
+  'lb',
+};
+
+String defaultCylinderCapacityUnitForLocale(String locale) {
+  final parts = locale.trim().replaceAll('_', '-').split('-');
+  final region = parts.skip(1).map((value) => value.toUpperCase()).firstWhere(
+    (value) => value.length == 2 || value.length == 3,
+    orElse: () => '',
+  );
+  return <String>{'US', 'CA'}.contains(region) ? 'ft3' : 'L';
+}
+
+String capacityUnitLabel(String value) => switch (value) {
+  'ft3' => 'ft³',
+  'm3' => 'm³',
+  _ => value,
+};
+
+String cylinderStateLabel(CylinderState value) => switch (value) {
+  CylinderState.ready => 'Ready',
+  CylinderState.low => 'Low',
+  CylinderState.empty => 'Empty',
+  CylinderState.away => 'Away',
+};
+
+String automaticCylinderName(
+  String gasType, {
+  double? capacityValue,
+  String? capacityUnit,
+}) {
+  final gas = gasType.trim().isEmpty ? 'Cylinder' : gasType.trim();
+  if (capacityValue == null || capacityUnit == null || capacityUnit.isEmpty) {
+    return gas;
+  }
+  final amount = capacityValue == capacityValue.roundToDouble()
+      ? capacityValue.toInt().toString()
+      : capacityValue.toStringAsFixed(1);
+  return '$gas · $amount ${capacityUnitLabel(capacityUnit)}';
 }
 
 bool isRtlLocale(String locale) => canonicalLocale(locale) == 'ar';
@@ -384,7 +432,7 @@ class AppSettings {
     String locale = 'en',
     String? currencyCode,
     String defaultMassUnit = 'kg',
-    String defaultVolumeUnit = 'L',
+    String? defaultVolumeUnit,
     bool remindersEnabled = false,
     bool onboardingComplete = false,
   }) {
@@ -398,9 +446,11 @@ class AppSettings {
       defaultMassUnit: <String>{'kg', 'lb'}.contains(defaultMassUnit)
           ? defaultMassUnit
           : 'kg',
-      defaultVolumeUnit: <String>{'L', 'm3', 'ft3'}.contains(defaultVolumeUnit)
+      defaultVolumeUnit:
+          defaultVolumeUnit != null &&
+              <String>{'L', 'm3', 'ft3'}.contains(defaultVolumeUnit)
           ? defaultVolumeUnit
-          : 'L',
+          : defaultCylinderCapacityUnitForLocale(locale),
       remindersEnabled: remindersEnabled,
       onboardingComplete: onboardingComplete,
     );
@@ -435,7 +485,7 @@ class AppSettings {
     locale: json['locale']?.toString() ?? 'en',
     currencyCode: json['currencyCode']?.toString(),
     defaultMassUnit: json['defaultMassUnit']?.toString() ?? 'kg',
-    defaultVolumeUnit: json['defaultVolumeUnit']?.toString() ?? 'L',
+    defaultVolumeUnit: json['defaultVolumeUnit']?.toString(),
     remindersEnabled: json['remindersEnabled'] == true,
     onboardingComplete: json['onboardingComplete'] == true,
   );
@@ -448,6 +498,7 @@ class Cylinder {
     required this.gasType,
     required this.relationship,
     required this.lifecycle,
+    this.state = CylinderState.ready,
     required this.createdAt,
     required this.updatedAt,
     this.capacityValue,
@@ -464,6 +515,7 @@ class Cylinder {
   final String gasType;
   final RelationshipType relationship;
   final CylinderLifecycle lifecycle;
+  final CylinderState state;
   final DateTime createdAt;
   final DateTime updatedAt;
   final double? capacityValue;
@@ -483,6 +535,7 @@ class Cylinder {
     String? gasType,
     RelationshipType? relationship,
     CylinderLifecycle? lifecycle,
+    CylinderState? state,
     DateTime? updatedAt,
     double? capacityValue,
     bool clearCapacity = false,
@@ -502,6 +555,7 @@ class Cylinder {
     gasType: gasType ?? this.gasType,
     relationship: relationship ?? this.relationship,
     lifecycle: lifecycle ?? this.lifecycle,
+    state: state ?? this.state,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     capacityValue: clearCapacity ? null : capacityValue ?? this.capacityValue,
@@ -521,6 +575,7 @@ class Cylinder {
     'gasType': gasType,
     'relationship': relationship.name,
     'lifecycle': lifecycle.name,
+    'state': state.name,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'capacityValue': capacityValue,
@@ -545,6 +600,11 @@ class Cylinder {
       CylinderLifecycle.values,
       json['lifecycle'],
       CylinderLifecycle.active,
+    ),
+    state: _enumValue(
+      CylinderState.values,
+      json['state'],
+      CylinderState.ready,
     ),
     createdAt: _date(json['createdAt']),
     updatedAt: _date(json['updatedAt']),

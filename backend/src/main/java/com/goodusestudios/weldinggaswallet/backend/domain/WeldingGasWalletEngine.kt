@@ -130,7 +130,13 @@ class WeldingGasWalletEngine(
         val now = clock.now()
         val cylinder = Cylinder(
             id = ids.newId(),
-            nickname = draft.nickname.trim(),
+            nickname = draft.nickname.trim().ifEmpty {
+                automaticCylinderName(
+                    gasType = draft.gasType,
+                    capacityValue = draft.capacityValue,
+                    capacityUnit = draft.capacityUnit,
+                )
+            },
             gasType = draft.gasType.trim(),
             capacityValue = draft.capacityValue,
             capacityUnit = textOrNull(draft.capacityUnit),
@@ -344,7 +350,8 @@ class WeldingGasWalletEngine(
         val updated = old.copy(
             serialNumber = newSerialNumber.applyTo(old.serialNumber),
             supplierId = supplierId?.let { requiredText(it, "supplierId") } ?: old.supplierId,
-            lifecycle = CylinderLifecycle.exchanged,
+            lifecycle = CylinderLifecycle.active,
+            state = CylinderState.ready,
             updatedAt = clock.now(),
         )
         val cylinders = current.cylinders.toMutableList().apply { this[index] = updated }
@@ -378,6 +385,8 @@ class WeldingGasWalletEngine(
         val old = current.cylinders[index]
         val updated = old.copy(
             supplierId = supplierId.applyTo(old.supplierId),
+            lifecycle = CylinderLifecycle.active,
+            state = CylinderState.ready,
             updatedAt = clock.now(),
         )
         val cylinders = current.cylinders.toMutableList().apply { this[index] = updated }
@@ -394,6 +403,42 @@ class WeldingGasWalletEngine(
             current.next(cylinders = cylinders, events = current.events + event),
             Unit,
         )
+    }
+
+    suspend fun changeCylinderState(
+        cylinderId: String,
+        state: CylinderState,
+        expectedRevision: Int? = null,
+    ) = repo.transact(expectedRevision) { current ->
+        requireEditable(current, cylinderId)
+        val index = current.cylinders.indexOfFirst { it.id == cylinderId }
+        val old = current.cylinders[index]
+        require(old.consumesCurrentSlot) { "Only a current cylinder can change state." }
+        if (old.state == state) {
+            TransactionOutcome(current, Unit)
+        } else {
+            val now = clock.now()
+            val updated = old.copy(
+                lifecycle = CylinderLifecycle.active,
+                state = state,
+                updatedAt = now,
+            )
+            val cylinders = current.cylinders.toMutableList().apply { this[index] = updated }
+            val event = CylinderEvent(
+                id = ids.newId(),
+                cylinderId = cylinderId,
+                type = CylinderEventType.stateChanged,
+                occurredAt = now,
+                metadata = mapOf(
+                    "previousState" to old.state.name,
+                    "state" to state.name,
+                ),
+            )
+            TransactionOutcome(
+                current.next(cylinders = cylinders, events = current.events + event),
+                Unit,
+            )
+        }
     }
 
     suspend fun changeSupplier(
@@ -1113,14 +1158,14 @@ class WeldingGasWalletEngine(
     }
 
     private fun validateDraft(draft: AddCylinderDraft) {
-        requiredText(draft.nickname, "nickname")
+        require(draft.nickname.trim().length <= 500) { "nickname is too long." }
         requiredText(draft.gasType, "gasType")
         if (draft.capacityValue != null) {
             require(draft.capacityValue.isFinite() && draft.capacityValue > 0) {
                 "Capacity must be a finite number above zero."
             }
-            require(textOrNull(draft.capacityUnit) != null) {
-                "Capacity unit is required with capacity."
+            require(textOrNull(draft.capacityUnit) in CYLINDER_CAPACITY_UNITS) {
+                "Use a supported capacity unit."
             }
         }
     }

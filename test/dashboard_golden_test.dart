@@ -30,7 +30,7 @@ void main() {
       schemaVersion: walletSchemaVersion,
       revision: 8,
       settings: AppSettings.create(
-        locale: 'en',
+        locale: 'en-US',
         currencyCode: 'USD',
         onboardingComplete: true,
       ),
@@ -84,14 +84,54 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Welding Gas Wallet'), findsOneWidget);
-    expect(find.text('QUICK ACTIONS'), findsOneWidget);
-    expect(find.text('SUMMARY & COUNTS'), findsOneWidget);
+    expect(find.text('QUICK ACTIONS'), findsNothing);
+    expect(find.text('SUMMARY & COUNTS'), findsNothing);
     expect(find.text('Scan'), findsNothing);
-    expect(find.text('Add cylinder'), findsOneWidget);
+    expect(find.text('READY'), findsOneWidget);
+    expect(find.text('Add'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Low'));
+    await tester.tap(find.text('Low'));
+    await tester.pumpAndSettle();
+    expect(find.text('LOW'), findsOneWidget);
     expect(find.text('Reminder'), findsOneWidget);
 
-    await tester.tap(find.text('Add cylinder'));
+    await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(FilledButton, 'Save cylinder'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    expect(find.text('Name (optional)'), findsOneWidget);
+    expect(find.text('ft³'), findsOneWidget);
+  });
+
+  testWidgets('empty dashboard offers only Add', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final wallet = WalletData.empty().next(
+      settings: AppSettings.create(onboardingComplete: true),
+    );
+    final controller =
+        AppController(
+            engine: WalletEngine(
+              repository: MemoryWalletRepository(wallet),
+              now: () => DateTime.utc(2026, 9, 1, 9),
+            ),
+          )
+          ..wallet = wallet
+          ..loading = false;
+
+    await tester.pumpWidget(
+      WeldingWalletApp(controller: controller, autoInitialize: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No cylinders'), findsOneWidget);
+    expect(find.text('Add'), findsOneWidget);
+    expect(find.text('Reminder'), findsNothing);
+    expect(find.text('Low'), findsNothing);
+    expect(find.text('Empty'), findsNothing);
+    expect(find.text('Away'), findsNothing);
   });
 }

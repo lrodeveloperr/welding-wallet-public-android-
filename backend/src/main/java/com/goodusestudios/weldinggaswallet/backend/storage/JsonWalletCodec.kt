@@ -22,7 +22,9 @@ class JsonWalletCodec : WalletBackupCodec {
     fun decodePrivate(encoded: String): WalletData {
         val root = parseObject(encoded, "Private wallet store")
         require(root.string("format") == PRIVATE_FORMAT) { "Unsupported private wallet store." }
-        require(root.int("schemaVersion") == WALLET_SCHEMA_VERSION) { "Unsupported private wallet schema." }
+        require(root.int("schemaVersion") in MINIMUM_SUPPORTED_WALLET_SCHEMA_VERSION..WALLET_SCHEMA_VERSION) {
+            "Unsupported private wallet schema."
+        }
         return stateFromJson(root.objectValue("state"), includeEntitlement = true)
     }
 
@@ -42,7 +44,9 @@ class JsonWalletCodec : WalletBackupCodec {
         require(encoded.toByteArray(StandardCharsets.UTF_8).size <= MAXIMUM_BACKUP_BYTES) { "Backup exceeds 5 MB." }
         val root = parseObject(encoded, "Backup")
         require(root.string("format") == BACKUP_FORMAT) { "Unknown backup format." }
-        require(root.int("schemaVersion") == WALLET_SCHEMA_VERSION) { "Unsupported backup schema." }
+        require(root.int("schemaVersion") in MINIMUM_SUPPORTED_WALLET_SCHEMA_VERSION..WALLET_SCHEMA_VERSION) {
+            "Unsupported backup schema."
+        }
         Instant.parse(root.string("exportedAt"))
         return stateFromJson(root.objectValue("payload"), includeEntitlement = false)
             .copy(entitlementCache = Entitlement.Free)
@@ -129,6 +133,7 @@ class JsonWalletCodec : WalletBackupCodec {
     private fun cylinderToJson(value: Cylinder, includeLocalPhotos: Boolean) = buildJsonObject {
         put("id", JsonPrimitive(value.id)); put("nickname", JsonPrimitive(value.nickname)); put("gasType", JsonPrimitive(value.gasType))
         put("relationship", JsonPrimitive(value.relationship.name)); put("lifecycle", JsonPrimitive(value.lifecycle.name))
+        put("state", JsonPrimitive(value.state.name))
         put("createdAt", JsonPrimitive(value.createdAt.toString())); put("updatedAt", JsonPrimitive(value.updatedAt.toString()))
         putNullableDouble("capacityValue", value.capacityValue); putNullableString("capacityUnit", value.capacityUnit)
         putNullableString("serialNumber", value.serialNumber)
@@ -143,6 +148,7 @@ class JsonWalletCodec : WalletBackupCodec {
         id = value.string("id"), nickname = value.string("nickname"), gasType = value.string("gasType"),
         relationship = enumValue<RelationshipType>(value.string("relationship")),
         lifecycle = enumValue<CylinderLifecycle>(value.string("lifecycle")),
+        state = value.textOrNull("state")?.let { enumValue<CylinderState>(it) } ?: CylinderState.ready,
         createdAt = value.instant("createdAt"), updatedAt = value.instant("updatedAt"),
         capacityValue = value.doubleOrNull("capacityValue"), capacityUnit = value.textOrNull("capacityUnit"),
         serialNumber = value.textOrNull("serialNumber"), localPhotoUri = value.textOrNull("localPhotoUri"),

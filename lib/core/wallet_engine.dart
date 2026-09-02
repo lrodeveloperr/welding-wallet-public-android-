@@ -224,6 +224,16 @@ class WalletEngine {
         return current.next(freeEditableSelection: unique.toList());
       });
 
+  Future<void> changeCylinderState(
+    String cylinderId,
+    CylinderState state,
+  ) => _recordEditableEvent(
+    cylinderId,
+    CylinderEventType.stateChanged,
+    state: state,
+    note: cylinderStateLabel(state),
+  );
+
   Future<void> recordRefill(
     String cylinderId, {
     Money? amount,
@@ -235,6 +245,7 @@ class WalletEngine {
     amount: amount,
     supplierId: supplierId,
     note: note,
+    state: CylinderState.ready,
   );
 
   Future<void> recordCost(
@@ -273,7 +284,8 @@ class WalletEngine {
       ].join('. ');
       final cleanNote = _clean(note);
       final updated = old.copyWith(
-        lifecycle: CylinderLifecycle.exchanged,
+        lifecycle: CylinderLifecycle.active,
+        state: CylinderState.ready,
         supplierId: supplierId,
         serialNumber: nextSerial,
         clearSerial: nextSerial == null,
@@ -522,12 +534,30 @@ class WalletEngine {
     Money? amount,
     String? supplierId,
     String? note,
+    CylinderState? state,
   }) async {
     await _requireEditable(cylinderId);
     await repository.transact((current) {
-      _cylinder(current, cylinderId);
+      final cylinder = _cylinder(current, cylinderId);
       _requireSupplier(current, supplierId);
+      if (state != null && !cylinder.consumesCurrentSlot) {
+        throw const WalletRuleException(
+          'Only current cylinders can change status.',
+        );
+      }
+      final updated = state == null
+          ? cylinder
+          : cylinder.copyWith(
+              lifecycle: CylinderLifecycle.active,
+              state: state,
+              updatedAt: _clock,
+            );
       return current.next(
+        cylinders: state == null
+            ? current.cylinders
+            : current.cylinders
+                  .map((value) => value.id == cylinderId ? updated : value)
+                  .toList(),
         events: <CylinderEvent>[
           ...current.events,
           _event(
@@ -589,7 +619,13 @@ class WalletEngine {
     final now = _clock;
     return Cylinder(
       id: _id(),
-      nickname: draft.nickname.trim(),
+      nickname: draft.nickname.trim().isEmpty
+          ? automaticCylinderName(
+              draft.gasType,
+              capacityValue: draft.capacityValue,
+              capacityUnit: draft.capacityUnit,
+            )
+          : draft.nickname.trim(),
       gasType: draft.gasType.trim(),
       relationship: draft.relationship,
       lifecycle: CylinderLifecycle.active,
@@ -622,14 +658,16 @@ class WalletEngine {
   );
 
   void _validateDraft(AddCylinderDraft draft) {
-    if (draft.nickname.trim().isEmpty) {
-      throw const WalletRuleException('Enter a cylinder name.');
-    }
     if (draft.gasType.trim().isEmpty) {
       throw const WalletRuleException('Choose a gas type.');
     }
-    if (draft.capacityValue != null && draft.capacityValue! <= 0) {
-      throw const WalletRuleException('Capacity must be greater than zero.');
+    if (draft.capacityValue != null) {
+      if (!draft.capacityValue!.isFinite || draft.capacityValue! <= 0) {
+        throw const WalletRuleException('Check capacity.');
+      }
+      if (!cylinderCapacityUnits.contains(draft.capacityUnit?.trim())) {
+        throw const WalletRuleException('Choose a capacity unit.');
+      }
     }
     if (draft.nickname.trim().length > 200 ||
         (draft.serialNumber?.trim().length ?? 0) > 300) {

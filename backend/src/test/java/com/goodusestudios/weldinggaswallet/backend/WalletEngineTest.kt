@@ -77,6 +77,44 @@ class WalletEngineTest {
     }
 
     @Test
+    fun statusIsFastAndRefillOrExchangeResetsReady() = runBlocking {
+        val h = Harness()
+        val cylinder = (
+            h.engine.addOrGate(
+                AddCylinderDraft(
+                    nickname = "",
+                    gasType = "Argon 75/25",
+                    relationship = RelationshipType.owned,
+                    capacityValue = 80.0,
+                    capacityUnit = "ft3",
+                ),
+            ) as CylinderAdded
+        ).cylinder
+        assertEquals("Argon 75/25 · 80 ft³", cylinder.nickname)
+        assertEquals(CylinderState.ready, cylinder.state)
+
+        h.engine.changeCylinderState(cylinder.id, CylinderState.low)
+        assertEquals(CylinderState.low, h.repo.read().cylinders.single().state)
+        assertEquals(CylinderEventType.stateChanged, h.repo.read().events.last().type)
+
+        h.engine.recordRefill(
+            cylinderId = cylinder.id,
+            occurredAt = Instant.parse("2027-01-02T00:00:00Z"),
+        )
+        assertEquals(CylinderState.ready, h.repo.read().cylinders.single().state)
+
+        h.engine.changeCylinderState(cylinder.id, CylinderState.empty)
+        h.engine.recordExchange(
+            cylinderId = cylinder.id,
+            occurredAt = Instant.parse("2027-01-03T00:00:00Z"),
+        )
+        val exchanged = h.repo.read().cylinders.single()
+        assertEquals(CylinderState.ready, exchanged.state)
+        assertEquals(CylinderLifecycle.active, exchanged.lifecycle)
+        assertEquals(CylinderEventType.exchange, h.repo.read().events.last().type)
+    }
+
+    @Test
     fun downgradeClearsLegacyFlagOnNonCurrentCylinder() = runBlocking {
         val h = Harness()
         val cylinder = (h.engine.addOrGate(h.draft("Legacy flag")) as CylinderAdded).cylinder
