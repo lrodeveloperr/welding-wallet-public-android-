@@ -43,8 +43,8 @@ class AdConfiguration {
 }
 
 class AdService extends ChangeNotifier {
-  AdService({AdConfiguration configuration = const AdConfiguration()})
-    : _configuration = configuration;
+  AdService({AdConfiguration? configuration})
+    : _configuration = configuration ?? const AdConfiguration();
 
   final AdConfiguration _configuration;
   bool _started = false;

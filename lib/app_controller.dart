@@ -36,7 +36,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
        reminders = reminders ?? ReminderService(),
        documents = documents ?? DocumentStore(),
        backups = backups ?? BackupService() {
-    ads.addListener(_handleAdChange);
+    this.ads.addListener(_handleAdChange);
   }
 
   final WalletEngine engine;
