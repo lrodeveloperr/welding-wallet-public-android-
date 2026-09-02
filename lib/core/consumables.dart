@@ -30,6 +30,8 @@ class ConsumableBatch {
     required this.lifecycle,
     required this.createdAt,
     required this.updatedAt,
+    required this.initialQuantity,
+    required this.quantityUnit,
     this.classification,
     this.manufacturer,
     this.supplierId,
@@ -49,6 +51,8 @@ class ConsumableBatch {
   final ConsumableLifecycle lifecycle;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final double initialQuantity;
+  final String quantityUnit;
   final String? classification;
   final String? manufacturer;
   final String? supplierId;
@@ -62,6 +66,19 @@ class ConsumableBatch {
   bool get hasCertificate =>
       certificateLocalPath != null && certificateLocalPath!.trim().isNotEmpty;
 
+  double remainingQuantity(Iterable<ConsumableEvent> events) {
+    final used = events
+        .where(
+          (event) =>
+              event.consumableId == id &&
+              (event.type == ConsumableEventType.issued ||
+                  event.type == ConsumableEventType.used),
+        )
+        .fold<double>(0, (total, event) => total + (event.quantity ?? 0));
+    final remaining = initialQuantity - used;
+    return remaining < 0 ? 0 : remaining;
+  }
+
   ConsumableBatch copyWith({
     ConsumableLifecycle? lifecycle,
     DateTime? updatedAt,
@@ -70,6 +87,8 @@ class ConsumableBatch {
     String? certificateNumber,
     DateTime? certificateDate,
     bool clearCertificate = false,
+    double? initialQuantity,
+    String? quantityUnit,
   }) => ConsumableBatch(
     id: id,
     primaryCode: primaryCode,
@@ -80,6 +99,8 @@ class ConsumableBatch {
     lifecycle: lifecycle ?? this.lifecycle,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    initialQuantity: initialQuantity ?? this.initialQuantity,
+    quantityUnit: quantityUnit ?? this.quantityUnit,
     classification: classification,
     manufacturer: manufacturer,
     supplierId: supplierId,
@@ -110,6 +131,8 @@ class ConsumableBatch {
     'lifecycle': lifecycle.name,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
+    'initialQuantity': initialQuantity,
+    'quantityUnit': quantityUnit,
     'classification': classification,
     'manufacturer': manufacturer,
     'supplierId': supplierId,
@@ -139,6 +162,14 @@ class ConsumableBatch {
         ),
         createdAt: _date(json['createdAt']),
         updatedAt: _date(json['updatedAt']),
+        initialQuantity:
+            ((json['initialQuantity'] as num?)?.toDouble() ?? 1).clamp(
+              0.000001,
+              double.infinity,
+            ).toDouble(),
+        quantityUnit: json['quantityUnit']?.toString().trim().isNotEmpty == true
+            ? json['quantityUnit']!.toString().trim()
+            : 'pack',
         classification: json['classification']?.toString(),
         manufacturer: json['manufacturer']?.toString(),
         supplierId: json['supplierId']?.toString(),
@@ -208,6 +239,8 @@ class AddConsumableDraft {
     this.supplierId,
     this.location,
     this.receiptDate,
+    this.initialQuantity = 1,
+    this.quantityUnit = 'pack',
   });
 
   final ConsumableType type;
@@ -219,6 +252,8 @@ class AddConsumableDraft {
   final String? supplierId;
   final String? location;
   final DateTime? receiptDate;
+  final double initialQuantity;
+  final String quantityUnit;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'type': type.name,
@@ -230,6 +265,8 @@ class AddConsumableDraft {
     'supplierId': supplierId,
     'location': location,
     'receiptDate': receiptDate?.toIso8601String(),
+    'initialQuantity': initialQuantity,
+    'quantityUnit': quantityUnit,
   };
 
   factory AddConsumableDraft.fromJson(Map<String, Object?> json) =>
@@ -249,6 +286,9 @@ class AddConsumableDraft {
         receiptDate: json['receiptDate'] == null
             ? null
             : _date(json['receiptDate']),
+        initialQuantity:
+            (json['initialQuantity'] as num?)?.toDouble() ?? 1,
+        quantityUnit: json['quantityUnit']?.toString() ?? 'pack',
       );
 }
 

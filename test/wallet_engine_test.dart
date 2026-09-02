@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:welding_wallet/core/models.dart';
 import 'package:welding_wallet/core/wallet_engine.dart';
@@ -21,6 +23,13 @@ void main() {
     relationship: RelationshipType.owned,
     supplierId: supplierId,
   );
+  AddConsumableDraft consumableDraft(String batch, {String? code}) =>
+      AddConsumableDraft(
+        type: ConsumableType.wire,
+        productName: 'ER70S-6',
+        batchLot: batch,
+        primaryCode: code,
+      );
 
   test(
     'the fourth current cylinder is preserved as a pending gated draft',
@@ -41,6 +50,145 @@ void main() {
       expect(wallet.pendingDraft?.draft.nickname, 'Cylinder 4');
     },
   );
+
+  test('cylinder serials are unique across every record type', () async {
+    await engine.addOrGate(
+      AddCylinderDraft(
+        nickname: 'Argon',
+        gasType: 'Argon',
+        relationship: RelationshipType.owned,
+        serialNumber: 'CODE-1',
+      ),
+    );
+
+    expect(
+      () => engine.addOrGate(
+        AddCylinderDraft(
+          nickname: 'Duplicate',
+          gasType: 'Argon',
+          relationship: RelationshipType.owned,
+          serialNumber: ' code-1 ',
+        ),
+      ),
+      throwsA(isA<WalletRuleException>()),
+    );
+    expect(
+      () => engine.addConsumableOrGate(
+        consumableDraft('LOT-CROSS', code: 'CODE-1'),
+      ),
+      throwsA(isA<WalletRuleException>()),
+    );
+  });
+
+  test('consumable balance rejects missing and excessive quantity', () async {
+    final consumable = (await engine.addConsumableOrGate(
+      AddConsumableDraft(
+        type: ConsumableType.wire,
+        productName: 'ER70S-6',
+        batchLot: 'LOT-QTY',
+        initialQuantity: 5,
+        quantityUnit: 'kg',
+      ),
+    )).consumable!;
+
+    expect(
+      () => engine.recordConsumableAction(
+        consumable.id,
+        ConsumableEventType.used,
+      ),
+      throwsA(isA<WalletRuleException>()),
+    );
+    await engine.recordConsumableAction(
+      consumable.id,
+      ConsumableEventType.used,
+      quantity: 2,
+    );
+    expect(
+      consumable.remainingQuantity((await engine.snapshot()).consumableEvents),
+      3,
+    );
+    expect(
+      () => engine.recordConsumableAction(
+        consumable.id,
+        ConsumableEventType.issued,
+        quantity: 4,
+      ),
+      throwsA(isA<WalletRuleException>()),
+    );
+  });
+
+  test('exchange never keeps the previous physical serial', () async {
+    final cylinder = (await engine.addOrGate(
+      AddCylinderDraft(
+        nickname: 'Rental',
+        gasType: 'Argon',
+        relationship: RelationshipType.rented,
+        serialNumber: 'OLD-1',
+      ),
+    )).cylinder!;
+
+    await engine.recordExchange(cylinder.id, newSerialNumber: 'NEW-2');
+    final wallet = await engine.snapshot();
+
+    expect(wallet.cylinders.single.serialNumber, 'NEW-2');
+    expect(wallet.events.last.note, contains('Previous serial: OLD-1'));
+    expect(wallet.events.last.note, contains('New serial: NEW-2'));
+  });
+
+  test('backup inspection rejects ambiguous cross-type codes', () async {
+    final raw = <String, Object?>{
+      'format': 'welding-wallet-backup',
+      'wallet': WalletData(
+        schemaVersion: walletSchemaVersion,
+        revision: 1,
+        settings: AppSettings.create(onboardingComplete: true),
+        suppliers: const [],
+        cylinders: [
+          Cylinder(
+            id: 'cylinder',
+            nickname: 'Argon',
+            gasType: 'Argon',
+            relationship: RelationshipType.owned,
+            lifecycle: CylinderLifecycle.active,
+            createdAt: DateTime.utc(2026),
+            updatedAt: DateTime.utc(2026),
+            serialNumber: 'SHARED',
+          ),
+        ],
+        consumables: [
+          ConsumableBatch(
+            id: 'batch',
+            primaryCode: 'shared',
+            type: ConsumableType.wire,
+            productName: 'Wire',
+            batchLot: 'LOT',
+            receiptDate: DateTime.utc(2026),
+            lifecycle: ConsumableLifecycle.active,
+            createdAt: DateTime.utc(2026),
+            updatedAt: DateTime.utc(2026),
+            initialQuantity: 1,
+            quantityUnit: 'pack',
+          ),
+        ],
+        events: const [],
+        consumableEvents: const [],
+        reminders: const [],
+        pendingDraft: null,
+        freeEditableSelection: const ['cylinder'],
+        freeEditableConsumableSelection: const ['batch'],
+        entitlementCache: Entitlement.free,
+      ).toJson(includeEntitlement: false),
+    };
+
+    expect(
+      () => engine.inspectBackup(jsonEncode(raw)),
+      throwsA(isA<WalletRuleException>()),
+    );
+    expect(
+      () => engine.inspectBackup('{broken'),
+      throwsA(isA<WalletRuleException>()),
+    );
+  });
 
   test('verified Pro resumes a pending draft exactly once', () async {
     for (var index = 1; index <= 4; index++) {
@@ -102,14 +250,6 @@ void main() {
       'EUR': 1800,
     });
   });
-  AddConsumableDraft consumableDraft(String batch, {String? code}) =>
-      AddConsumableDraft(
-        type: ConsumableType.wire,
-        productName: 'ER70S-6',
-        batchLot: batch,
-        primaryCode: code,
-      );
-
   test('schema v3 wallet migrates with empty consumable collections', () {
     final wallet = WalletData.fromJson(<String, Object?>{
       'schemaVersion': 3,

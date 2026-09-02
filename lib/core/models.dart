@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'consumables.dart';
 export 'consumables.dart';
 
-const int walletSchemaVersion = 4;
+const int walletSchemaVersion = 5;
 const int freeEditableCylinderLimit = 3;
 const int freeEditableConsumableLimit = 3;
 const int maximumBackupBytes = 5 * 1024 * 1024;
@@ -839,6 +839,7 @@ class WalletData {
     required this.pendingDraft,
     this.pendingConsumableDraft,
     required List<String> freeEditableSelection,
+    List<String> freeEditableConsumableSelection = const <String>[],
     required this.entitlementCache,
   }) : suppliers = List<Supplier>.unmodifiable(suppliers),
        cylinders = List<Cylinder>.unmodifiable(cylinders),
@@ -848,6 +849,9 @@ class WalletData {
        reminders = List<Reminder>.unmodifiable(reminders),
        freeEditableSelection = List<String>.unmodifiable(
          freeEditableSelection.toSet(),
+       ),
+       freeEditableConsumableSelection = List<String>.unmodifiable(
+         freeEditableConsumableSelection.toSet(),
        );
 
   final int schemaVersion;
@@ -862,6 +866,7 @@ class WalletData {
   final PendingCylinderDraft? pendingDraft;
   final PendingConsumableDraft? pendingConsumableDraft;
   final List<String> freeEditableSelection;
+  final List<String> freeEditableConsumableSelection;
   final Entitlement entitlementCache;
 
   factory WalletData.empty({String locale = 'en', String? currencyCode}) =>
@@ -881,6 +886,7 @@ class WalletData {
         pendingDraft: null,
         pendingConsumableDraft: null,
         freeEditableSelection: const <String>[],
+        freeEditableConsumableSelection: const <String>[],
         entitlementCache: Entitlement.free,
       );
 
@@ -897,6 +903,7 @@ class WalletData {
     PendingConsumableDraft? pendingConsumableDraft,
     bool clearPendingConsumableDraft = false,
     List<String>? freeEditableSelection,
+    List<String>? freeEditableConsumableSelection,
     Entitlement? entitlementCache,
   }) => WalletData(
     schemaVersion: walletSchemaVersion,
@@ -913,6 +920,8 @@ class WalletData {
         ? null
         : pendingConsumableDraft ?? this.pendingConsumableDraft,
     freeEditableSelection: freeEditableSelection ?? this.freeEditableSelection,
+    freeEditableConsumableSelection:
+        freeEditableConsumableSelection ?? this.freeEditableConsumableSelection,
     entitlementCache: entitlementCache ?? this.entitlementCache,
   );
 
@@ -929,6 +938,7 @@ class WalletData {
     pendingDraft: pendingDraft,
     pendingConsumableDraft: pendingConsumableDraft,
     freeEditableSelection: freeEditableSelection,
+    freeEditableConsumableSelection: freeEditableConsumableSelection,
     entitlementCache: entitlement,
   );
 
@@ -958,6 +968,7 @@ class WalletData {
     ),
     'pendingConsumableDraft': pendingConsumableDraft?.toJson(),
     'freeEditableSelection': freeEditableSelection,
+    'freeEditableConsumableSelection': freeEditableConsumableSelection,
     if (includeEntitlement) 'entitlementCache': entitlementCache.toJson(),
   };
 
@@ -997,6 +1008,11 @@ class WalletData {
           : null,
       freeEditableSelection:
           (json['freeEditableSelection'] as List?)
+              ?.map((value) => value.toString())
+              .toList() ??
+          const <String>[],
+      freeEditableConsumableSelection:
+          (json['freeEditableConsumableSelection'] as List?)
               ?.map((value) => value.toString())
               .toList() ??
           const <String>[],

@@ -7,6 +7,10 @@ import 'ui/wallet_app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final engine = WalletEngine(repository: FileWalletRepository());
+  final locale = WidgetsBinding.instance.platformDispatcher.locale
+      .toLanguageTag();
+  final engine = WalletEngine(
+    repository: FileWalletRepository(initialLocale: locale),
+  );
   runApp(WeldingWalletApp(controller: AppController(engine: engine)));
 }
