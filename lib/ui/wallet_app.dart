@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:intl/intl.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_controller.dart';
@@ -122,7 +121,6 @@ class _WalletShell extends StatelessWidget {
     final pages = <Widget>[
       _DashboardScreen(
         wallet: wallet,
-        onScan: () => _openScanner(context, controller),
         onAddCylinder: () => _openAddCylinder(context, controller),
         onReminder: () => _openReminder(context, controller),
         onCylinder: (cylinder) => _openCylinder(context, controller, cylinder),
@@ -295,14 +293,12 @@ class _FreeBannerState extends State<_FreeBanner> {
 class _DashboardScreen extends StatelessWidget {
   const _DashboardScreen({
     required this.wallet,
-    required this.onScan,
     required this.onAddCylinder,
     required this.onReminder,
     required this.onCylinder,
   });
 
   final WalletData wallet;
-  final VoidCallback onScan;
   final VoidCallback onAddCylinder;
   final VoidCallback onReminder;
   final ValueChanged<Cylinder> onCylinder;
@@ -347,23 +343,15 @@ class _DashboardScreen extends StatelessWidget {
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final columns = constraints.maxWidth >= 720 ? 3 : 2;
+                  const columns = 2;
                   return GridView.count(
                     crossAxisCount: columns,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
-                    childAspectRatio: columns == 3 ? 1.55 : 1.42,
+                    childAspectRatio: constraints.maxWidth >= 720 ? 2.6 : 1.42,
                     children: [
-                      _QuickAction(
-                        label: 'Scan',
-                        caption: 'Find or add',
-                        icon: Icons.qr_code_scanner,
-                        color: WalletColors.blue,
-                        soft: WalletColors.blueSoft,
-                        onTap: onScan,
-                      ),
                       _QuickAction(
                         label: 'Add cylinder',
                         caption: 'Gas record',
@@ -704,119 +692,6 @@ class _SectionLabel extends StatelessWidget {
       fontSize: 12,
       fontWeight: FontWeight.w900,
       letterSpacing: 1.05,
-    ),
-  );
-}
-
-Future<void> _openScanner(
-  BuildContext context,
-  AppController controller,
-) async {
-  final code = await showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) => const _ScannerSheet(),
-  );
-  if (!context.mounted || code == null || code.trim().isEmpty) return;
-  final normalized = code.trim().toLowerCase();
-  final cylinder = _firstOrNull(
-    controller.wallet!.cylinders.where(
-      (value) => value.serialNumber?.trim().toLowerCase() == normalized,
-    ),
-  );
-  if (cylinder != null) {
-    await _openCylinder(context, controller, cylinder);
-    return;
-  }
-  if (context.mounted) {
-    await _openAddCylinder(context, controller, scannedCode: code.trim());
-  }
-}
-
-class _ScannerSheet extends StatefulWidget {
-  const _ScannerSheet();
-
-  @override
-  State<_ScannerSheet> createState() => _ScannerSheetState();
-}
-
-class _ScannerSheetState extends State<_ScannerSheet> {
-  bool handled = false;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Center(child: _Grabber()),
-        const SizedBox(height: 18),
-        const _SheetHeader(
-          title: 'Scan',
-          subtitle:
-              'Cylinder serial, manufacturer barcode or Welding Gas Wallet QR.',
-        ),
-        const SizedBox(height: 16),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            height: 320,
-            child: MobileScanner(
-              onDetect: (capture) {
-                if (handled) return;
-                for (final barcode in capture.barcodes) {
-                  final value = barcode.rawValue?.trim();
-                  if (value == null || value.isEmpty) continue;
-                  handled = true;
-                  Navigator.pop(context, value);
-                  break;
-                }
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              final manual = TextEditingController();
-              final value = await showDialog<String>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Enter code'),
-                  content: TextField(
-                    controller: manual,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Barcode / QR',
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed: () =>
-                          Navigator.pop(context, manual.text.trim()),
-                      child: const Text('Continue'),
-                    ),
-                  ],
-                ),
-              );
-              manual.dispose();
-              if (context.mounted && value != null && value.isNotEmpty) {
-                Navigator.pop(context, value);
-              }
-            },
-            icon: const Icon(Icons.keyboard_outlined),
-            label: const Text('Enter manually'),
-          ),
-        ),
-      ],
     ),
   );
 }
@@ -1544,15 +1419,13 @@ class _FeatureLine extends StatelessWidget {
 
 Future<void> _openAddCylinder(
   BuildContext context,
-  AppController controller, {
-  String? scannedCode,
-}) async {
+  AppController controller,
+) async {
   final draft = await showModalBottomSheet<AddCylinderDraft>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) =>
-        _AddCylinderSheet(controller: controller, prefilledSerial: scannedCode),
+    builder: (_) => _AddCylinderSheet(controller: controller),
   );
   if (draft == null) return;
   final result = await controller.addCylinder(draft);
@@ -1944,9 +1817,8 @@ Future<Supplier?> _quickCreateSupplier(
 }
 
 class _AddCylinderSheet extends StatefulWidget {
-  const _AddCylinderSheet({required this.controller, this.prefilledSerial});
+  const _AddCylinderSheet({required this.controller});
   final AppController controller;
-  final String? prefilledSerial;
 
   @override
   State<_AddCylinderSheet> createState() => _AddCylinderSheetState();
@@ -1955,7 +1827,7 @@ class _AddCylinderSheet extends StatefulWidget {
 class _AddCylinderSheetState extends State<_AddCylinderSheet> {
   final name = TextEditingController();
   final capacity = TextEditingController();
-  late final serial = TextEditingController(text: widget.prefilledSerial);
+  final serial = TextEditingController();
   String gas = 'Argon';
   RelationshipType relationship = RelationshipType.owned;
   String? supplierId;

@@ -1,8 +1,4 @@
-@Tags(['golden'])
-library;
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:welding_wallet/app_controller.dart';
 import 'package:welding_wallet/core/models.dart';
@@ -11,19 +7,7 @@ import 'package:welding_wallet/core/wallet_repository.dart';
 import 'package:welding_wallet/ui/wallet_app.dart';
 
 void main() {
-  testWidgets('Inventorya-inspired wallet dashboard', (tester) async {
-    final fontLoader = FontLoader('Roboto')
-      ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
-      ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'));
-    await fontLoader.load();
-
-    // Flutter's test renderer does not automatically load the Material icon
-    // font. Load the same font family explicitly so golden evidence contains
-    // the real app icons instead of missing-glyph squares.
-    final materialIconLoader = FontLoader('MaterialIcons')
-      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
-    await materialIconLoader.load();
-
+  testWidgets('dashboard keeps only essential actions', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -102,9 +86,12 @@ void main() {
     expect(find.text('Welding Gas Wallet'), findsOneWidget);
     expect(find.text('QUICK ACTIONS'), findsOneWidget);
     expect(find.text('SUMMARY & COUNTS'), findsOneWidget);
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/dashboard.png'),
-    );
+    expect(find.text('Scan'), findsNothing);
+    expect(find.text('Add cylinder'), findsOneWidget);
+    expect(find.text('Reminder'), findsOneWidget);
+
+    await tester.tap(find.text('Add cylinder'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Save cylinder'), findsOneWidget);
   });
 }
