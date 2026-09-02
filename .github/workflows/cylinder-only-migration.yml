@@ -67,8 +67,8 @@ jobs:
 
           python3 /tmp/cylinder_only_v2.py
 
-          # Remove the few cross-feature references that were outside the
-          # bounded consumables screens in the current UI.
+          # Remove cross-feature references that sat outside the bounded
+          # consumables screens in the current UI/controller.
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -97,6 +97,13 @@ jobs:
           if removed != 2:
               raise SystemExit(f'expected two cross-feature duplicate-code checks, removed {removed}')
           path.write_text(source)
+
+          controller = Path('lib/app_controller.dart')
+          source = controller.read_text()
+          old = '    await documents.deleteAll();\n'
+          if source.count(old) != 1:
+              raise SystemExit('expected one obsolete document cleanup call')
+          controller.write_text(source.replace(old, ''))
           PY
 
           # No active consumable/certificate module may remain. Scanner terms
