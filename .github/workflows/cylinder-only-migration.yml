@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/cylinder-only-migration.yml'
-      - '.github/scripts/cylinder_only_v2.py.gz.b64'
+      - '.github/scripts/cylinder_only_v2.part*'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +28,19 @@ jobs:
           set -euo pipefail
           BASE=408b6e03257c922521c55d3259f2f506baebd881
 
+          # Reassemble the migration script from small, integrity-checked chunks.
+          cat .github/scripts/cylinder_only_v2.part1 \
+              .github/scripts/cylinder_only_v2.part2 \
+              .github/scripts/cylinder_only_v2.part3 \
+              .github/scripts/cylinder_only_v2.part4 \
+              .github/scripts/cylinder_only_v2.part5 > /tmp/cylinder_only_v2.b64
+          echo 'debed01a52ce42865fe4b082ec5682a03bd37754d9898693d79e230988089f1a  /tmp/cylinder_only_v2.b64' | sha256sum -c -
+          base64 -d /tmp/cylinder_only_v2.b64 > /tmp/cylinder_only_v2.py.gz
+          echo 'b02d75fb8164c528ac744d6ec0ea0aef630445630ff04c8d9b6238295e8c264d  /tmp/cylinder_only_v2.py.gz' | sha256sum -c -
+          gzip -dc /tmp/cylinder_only_v2.py.gz > /tmp/cylinder_only_v2.py
+          echo 'd222764baa23cc52e5c941648a89297a57e00f76d53dc62c15d01a31d83abfc2  /tmp/cylinder_only_v2.py' | sha256sum -c -
+          python3 -m py_compile /tmp/cylinder_only_v2.py
+
           # Restore only the domain files from the last known cylinder-only
           # baseline. UI/controller stay on the current branch and are edited
           # surgically by the migration script to avoid visual regression.
@@ -38,7 +51,6 @@ jobs:
             lib/services/document_store.dart \
             docs/welding-wallet-name-checklist.md
 
-          base64 -d .github/scripts/cylinder_only_v2.py.gz.b64 | gzip -d > /tmp/cylinder_only_v2.py
           python3 /tmp/cylinder_only_v2.py
 
           # No active consumable/certificate module may remain. Scanner terms
@@ -100,7 +112,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git rm -f .github/workflows/cylinder-only-migration.yml .github/scripts/cylinder_only_v2.py.gz.b64
+          git rm -f \
+            .github/workflows/cylinder-only-migration.yml \
+            .github/scripts/cylinder_only_v2.py.gz.b64 \
+            .github/scripts/cylinder_only_v2.part1 \
+            .github/scripts/cylinder_only_v2.part2 \
+            .github/scripts/cylinder_only_v2.part3 \
+            .github/scripts/cylinder_only_v2.part4 \
+            .github/scripts/cylinder_only_v2.part5
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
