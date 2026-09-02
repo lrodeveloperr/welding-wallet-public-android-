@@ -24,15 +24,6 @@ class AddCylinderResult {
   bool get wasAdded => cylinder != null;
 }
 
-class AddConsumableResult {
-  const AddConsumableResult.added(this.consumable) : paywallReason = null;
-  const AddConsumableResult.gated(this.paywallReason) : consumable = null;
-
-  final ConsumableBatch? consumable;
-  final PaywallReason? paywallReason;
-  bool get wasAdded => consumable != null;
-}
-
 class WalletEngine {
   WalletEngine({required this.repository, Uuid? uuid, Now? now})
     : _uuid = uuid ?? const Uuid(),
@@ -103,9 +94,7 @@ class WalletEngine {
       final isReferenced =
           current.cylinders.any((value) => value.supplierId == id) ||
           current.events.any((value) => value.supplierId == id) ||
-          current.consumables.any((value) => value.supplierId == id) ||
-          current.pendingDraft?.draft.supplierId == id ||
-          current.pendingConsumableDraft?.draft.supplierId == id;
+          current.pendingDraft?.draft.supplierId == id;
       if (isReferenced) {
         throw const WalletRuleException(
           'This supplier is used by wallet history and cannot be deleted.',
@@ -122,7 +111,7 @@ class WalletEngine {
     AddCylinderResult? result;
     await repository.transact((current) {
       _requireSupplier(current, draft.supplierId);
-      _requireUniqueCode(current, draft.serialNumber);
+      _requireUniqueCylinderSerial(current, draft.serialNumber);
       final currentCount = current.cylinders
           .where((value) => value.consumesCurrentSlot)
           .length;
@@ -155,184 +144,6 @@ class WalletEngine {
     return result!;
   }
 
-  Future<AddConsumableResult> addConsumableOrGate(
-    AddConsumableDraft draft,
-  ) async {
-    _validateConsumableDraft(draft);
-    AddConsumableResult? result;
-    await repository.transact((current) {
-      _requireSupplier(current, draft.supplierId);
-      final currentCount = current.consumables
-          .where((value) => value.isActive)
-          .length;
-      final isPro = current.entitlementCache.isProAt(_clock);
-      if (!isPro && currentCount >= freeEditableConsumableLimit) {
-        result = const AddConsumableResult.gated(
-          PaywallReason.addFourthConsumableBatch,
-        );
-        return current.next(
-          pendingConsumableDraft: PendingConsumableDraft(draft: draft),
-        );
-      }
-      final consumable = _buildConsumable(current, draft);
-      result = AddConsumableResult.added(consumable);
-      return current.next(
-        consumables: <ConsumableBatch>[...current.consumables, consumable],
-        consumableEvents: <ConsumableEvent>[
-          ...current.consumableEvents,
-          _consumableEvent(consumable.id, ConsumableEventType.received),
-        ],
-        freeEditableConsumableSelection: isPro
-            ? current.freeEditableConsumableSelection
-            : <String>[
-                ...current.freeEditableConsumableSelection,
-                consumable.id,
-              ].take(freeEditableConsumableLimit).toList(),
-        clearPendingConsumableDraft: true,
-      );
-    });
-    return result!;
-  }
-
-  Future<ConsumableBatch?> resumePendingConsumableDraft(
-    Entitlement verified,
-  ) async {
-    if (!verified.isProAt(_clock)) return null;
-    ConsumableBatch? added;
-    await repository.transact((current) {
-      final pending = current.pendingConsumableDraft;
-      if (pending == null || pending.draftResumed) {
-        return current.next(entitlementCache: verified);
-      }
-      _requireSupplier(current, pending.draft.supplierId);
-      added = _buildConsumable(current, pending.draft);
-      return current.next(
-        entitlementCache: verified,
-        consumables: <ConsumableBatch>[...current.consumables, added!],
-        consumableEvents: <ConsumableEvent>[
-          ...current.consumableEvents,
-          _consumableEvent(added!.id, ConsumableEventType.received),
-        ],
-        clearPendingConsumableDraft: true,
-      );
-    });
-    return added;
-  }
-
-  Future<bool> canEditConsumable(String consumableId) async {
-    final current = await repository.read();
-    final consumable = _consumable(current, consumableId);
-    if (current.entitlementCache.isProAt(_clock)) return true;
-    if (!consumable.isActive) return false;
-    final selected = current.freeEditableConsumableSelection.isEmpty
-        ? current.consumables
-              .where((value) => value.isActive)
-              .take(freeEditableConsumableLimit)
-              .map((value) => value.id)
-              .toSet()
-        : current.freeEditableConsumableSelection.toSet();
-    return selected.contains(consumableId);
-  }
-
-  Future<void> attachConsumableCertificate(
-    String consumableId, {
-    required String localPath,
-    required String originalName,
-    String? certificateNumber,
-    DateTime? certificateDate,
-  }) async {
-    await _requireEditableConsumable(consumableId);
-    await repository.transact((current) {
-      final old = _consumable(current, consumableId);
-      final eventType = old.hasCertificate
-          ? ConsumableEventType.certificateReplaced
-          : ConsumableEventType.certificateAttached;
-      final updated = old.copyWith(
-        updatedAt: _clock,
-        certificateLocalPath: localPath.trim(),
-        certificateOriginalName: originalName.trim(),
-        certificateNumber: _clean(certificateNumber),
-        certificateDate: certificateDate?.toUtc(),
-      );
-      return current.next(
-        consumables: current.consumables
-            .map((value) => value.id == consumableId ? updated : value)
-            .toList(),
-        consumableEvents: <ConsumableEvent>[
-          ...current.consumableEvents,
-          _consumableEvent(consumableId, eventType),
-        ],
-      );
-    });
-  }
-
-  Future<void> recordConsumableAction(
-    String consumableId,
-    ConsumableEventType type, {
-    double? quantity,
-    String? reference,
-    String? note,
-  }) async {
-    if (type != ConsumableEventType.issued &&
-        type != ConsumableEventType.used) {
-      throw const WalletRuleException('Choose Issue or Use.');
-    }
-    final usedQuantity = quantity;
-    if (usedQuantity == null || !usedQuantity.isFinite || usedQuantity <= 0) {
-      throw const WalletRuleException('Quantity must be greater than zero.');
-    }
-    await _requireEditableConsumable(consumableId);
-    await repository.transact((current) {
-      final consumable = _consumable(current, consumableId);
-      final remaining = consumable.remainingQuantity(current.consumableEvents);
-      if (usedQuantity > remaining) {
-        throw WalletRuleException(
-          'Only ${_plainNumber(remaining)} ${consumable.quantityUnit} remains.',
-        );
-      }
-      return current.next(
-        consumableEvents: <ConsumableEvent>[
-          ...current.consumableEvents,
-          _consumableEvent(
-            consumableId,
-            type,
-            quantity: usedQuantity,
-            reference: reference,
-            note: note,
-          ),
-        ],
-      );
-    });
-  }
-
-  Future<void> archiveConsumable(String consumableId) async {
-    await _requireEditableConsumable(consumableId);
-    await repository.transact((current) {
-      final old = _consumable(current, consumableId);
-      final updated = old.copyWith(
-        lifecycle: ConsumableLifecycle.archived,
-        updatedAt: _clock,
-      );
-      return current.next(
-        consumables: current.consumables
-            .map((value) => value.id == consumableId ? updated : value)
-            .toList(),
-        consumableEvents: <ConsumableEvent>[
-          ...current.consumableEvents,
-          _consumableEvent(consumableId, ConsumableEventType.archived),
-        ],
-        freeEditableConsumableSelection: <String>{
-          ...current.freeEditableConsumableSelection.where(
-            (value) => value != consumableId,
-          ),
-          ...current.consumables
-              .where((value) => value.id != consumableId && value.isActive)
-              .map((value) => value.id),
-        }.take(freeEditableConsumableLimit).toList(),
-      );
-    });
-  }
-
   Future<Cylinder?> resumePendingDraft(Entitlement verified) async {
     if (!verified.isProAt(_clock)) return null;
     Cylinder? added;
@@ -342,7 +153,7 @@ class WalletEngine {
         return current.next(entitlementCache: verified);
       }
       _requireSupplier(current, pending.draft.supplierId);
-      _requireUniqueCode(current, pending.draft.serialNumber);
+      _requireUniqueCylinderSerial(current, pending.draft.serialNumber);
       added = _buildCylinder(pending.draft);
       return current.next(
         entitlementCache: verified,
@@ -387,19 +198,8 @@ class WalletEngine {
           ...current.freeEditableSelection.where(currentCylinderIds.contains),
           ...currentCylinderIds,
         }.take(freeEditableCylinderLimit).toList();
-        final currentConsumableIds = current.consumables
-            .where((value) => value.isActive)
-            .map((value) => value.id)
-            .toList();
-        final allowedConsumables = <String>{
-          ...current.freeEditableConsumableSelection.where(
-            currentConsumableIds.contains,
-          ),
-          ...currentConsumableIds,
-        }.take(freeEditableConsumableLimit).toList();
         return current.next(
           freeEditableSelection: allowed,
-          freeEditableConsumableSelection: allowedConsumables,
           entitlementCache: Entitlement.free,
         );
       });
@@ -423,23 +223,6 @@ class WalletEngine {
         }
         return current.next(freeEditableSelection: unique.toList());
       });
-
-  Future<WalletData> selectFreeEditableConsumables(
-    List<String> consumableIds,
-  ) => repository.transact((current) {
-    final unique = consumableIds.toSet();
-    if (unique.length > freeEditableConsumableLimit) {
-      throw const WalletRuleException('Choose no more than three batches.');
-    }
-    final currentIds = current.consumables
-        .where((value) => value.isActive)
-        .map((value) => value.id)
-        .toSet();
-    if (!currentIds.containsAll(unique)) {
-      throw const WalletRuleException('Only active batches can be selected.');
-    }
-    return current.next(freeEditableConsumableSelection: unique.toList());
-  });
 
   Future<void> recordRefill(
     String cylinderId, {
@@ -478,7 +261,7 @@ class WalletEngine {
     await repository.transact((current) {
       _requireSupplier(current, supplierId);
       final old = _cylinder(current, cylinderId);
-      _requireUniqueCode(
+      _requireUniqueCylinderSerial(
         current,
         newSerialNumber,
         excludingCylinderId: cylinderId,
@@ -592,7 +375,7 @@ class WalletEngine {
     });
   }
 
-  Future<void> setReminderDelivery(
+  Future<WalletData> setReminderDelivery(
     String reminderId,
     ReminderDelivery delivery,
   ) => repository.transact((current) {
@@ -650,7 +433,7 @@ class WalletEngine {
   Future<String> exportBackup() async {
     final data = await repository.read();
     final encoded = jsonEncode(<String, Object?>{
-      'format': 'welding-wallet-backup',
+      'format': 'welding-gas-wallet-backup',
       'version': walletSchemaVersion,
       'exportedAt': _clock.toIso8601String(),
       'wallet': data.toJson(
@@ -684,14 +467,10 @@ class WalletEngine {
       settings: imported.settings,
       suppliers: imported.suppliers,
       cylinders: imported.cylinders,
-      consumables: imported.consumables,
       events: imported.events,
-      consumableEvents: imported.consumableEvents,
       reminders: imported.reminders,
       pendingDraft: imported.pendingDraft,
-      pendingConsumableDraft: imported.pendingConsumableDraft,
       freeEditableSelection: imported.freeEditableSelection,
-      freeEditableConsumableSelection: imported.freeEditableConsumableSelection,
       entitlementCache: current.entitlementCache,
     );
     await repository.replace(safe);
@@ -704,10 +483,17 @@ class WalletEngine {
     }
     try {
       final raw = jsonDecode(encoded);
-      if (raw is! Map ||
-          raw['format'] != 'welding-wallet-backup' ||
-          raw['wallet'] is! Map) {
-        throw const WalletRuleException('This is not a Welding Wallet backup.');
+      if (raw is! Map || raw['wallet'] is! Map) {
+        throw const WalletRuleException(
+          'This is not a Welding Gas Wallet backup.',
+        );
+      }
+      final format = raw['format'];
+      if (format != 'welding-gas-wallet-backup' &&
+          format != 'welding-wallet-backup') {
+        throw const WalletRuleException(
+          'This is not a Welding Gas Wallet backup.',
+        );
       }
       final imported = WalletData.fromJson(
         Map<String, Object?>.from(raw['wallet'] as Map),
@@ -717,7 +503,9 @@ class WalletEngine {
     } on WalletRuleException {
       rethrow;
     } catch (_) {
-      throw const WalletRuleException('This is not a Welding Wallet backup.');
+      throw const WalletRuleException(
+        'This is not a Welding Gas Wallet backup.',
+      );
     }
   }
 
@@ -767,24 +555,24 @@ class WalletEngine {
         lifecycle: lifecycle,
         updatedAt: _clock,
       );
+      final nextCylinders = current.cylinders
+          .map((value) => value.id == cylinderId ? updated : value)
+          .toList();
+      final eligibleIds = nextCylinders
+          .where((value) => value.consumesCurrentSlot)
+          .map((value) => value.id)
+          .toList();
+      final selection = <String>{
+        ...current.freeEditableSelection.where(eligibleIds.contains),
+        ...eligibleIds,
+      }.take(freeEditableCylinderLimit).toList();
       return current.next(
-        cylinders: current.cylinders
-            .map((value) => value.id == cylinderId ? updated : value)
-            .toList(),
+        cylinders: nextCylinders,
         events: <CylinderEvent>[
           ...current.events,
           _event(cylinderId, type, note: note),
         ],
-        freeEditableSelection: <String>{
-          ...current.freeEditableSelection.where(
-            (value) => value != cylinderId,
-          ),
-          ...current.cylinders
-              .where(
-                (value) => value.id != cylinderId && value.consumesCurrentSlot,
-              )
-              .map((value) => value.id),
-        }.take(freeEditableCylinderLimit).toList(),
+        freeEditableSelection: selection,
       );
     });
   }
@@ -796,96 +584,6 @@ class WalletEngine {
       );
     }
   }
-
-  Future<void> _requireEditableConsumable(String consumableId) async {
-    if (!await canEditConsumable(consumableId)) {
-      throw const WalletRuleException(
-        'This consumable batch is read-only on the free plan.',
-      );
-    }
-  }
-
-  ConsumableBatch _buildConsumable(
-    WalletData current,
-    AddConsumableDraft draft,
-  ) {
-    final now = _clock;
-    final id = _id();
-    final code = _clean(draft.primaryCode) ?? 'WW:$id';
-    final normalized = code.toLowerCase();
-    final duplicate =
-        current.consumables.any(
-          (value) => value.primaryCode.toLowerCase() == normalized,
-        ) ||
-        current.cylinders.any(
-          (value) => value.serialNumber?.trim().toLowerCase() == normalized,
-        );
-    if (duplicate) {
-      throw const WalletRuleException(
-        'That barcode or QR code is already saved.',
-      );
-    }
-    return ConsumableBatch(
-      id: id,
-      primaryCode: code,
-      type: draft.type,
-      productName: draft.productName.trim(),
-      batchLot: draft.batchLot.trim(),
-      receiptDate: (draft.receiptDate ?? now).toUtc(),
-      lifecycle: ConsumableLifecycle.active,
-      createdAt: now,
-      updatedAt: now,
-      initialQuantity: draft.initialQuantity,
-      quantityUnit: draft.quantityUnit.trim(),
-      classification: _clean(draft.classification),
-      manufacturer: _clean(draft.manufacturer),
-      supplierId: draft.supplierId,
-      location: _clean(draft.location),
-    );
-  }
-
-  ConsumableEvent _consumableEvent(
-    String consumableId,
-    ConsumableEventType type, {
-    double? quantity,
-    String? reference,
-    String? note,
-  }) => ConsumableEvent(
-    id: _id(),
-    consumableId: consumableId,
-    type: type,
-    occurredAt: _clock,
-    quantity: quantity,
-    reference: _clean(reference),
-    note: _clean(note),
-  );
-
-  void _validateConsumableDraft(AddConsumableDraft draft) {
-    if (draft.productName.trim().isEmpty) {
-      throw const WalletRuleException('Enter the consumable product.');
-    }
-    if (draft.batchLot.trim().isEmpty) {
-      throw const WalletRuleException('Enter the batch or lot number.');
-    }
-    if (!draft.initialQuantity.isFinite || draft.initialQuantity <= 0) {
-      throw const WalletRuleException('Quantity must be greater than zero.');
-    }
-    if (draft.quantityUnit.trim().isEmpty) {
-      throw const WalletRuleException('Choose a quantity unit.');
-    }
-    if (draft.productName.trim().length > 200 ||
-        draft.batchLot.trim().length > 200 ||
-        (draft.primaryCode?.trim().length ?? 0) > 300) {
-      throw const WalletRuleException('Shorten the entered text.');
-    }
-  }
-
-  ConsumableBatch _consumable(WalletData data, String id) =>
-      data.consumables.firstWhere(
-        (value) => value.id == id,
-        orElse: () =>
-            throw const WalletRuleException('Consumable batch not found.'),
-      );
 
   Cylinder _buildCylinder(AddCylinderDraft draft) {
     final now = _clock;
@@ -939,26 +637,20 @@ class WalletEngine {
     }
   }
 
-  void _requireUniqueCode(
+  void _requireUniqueCylinderSerial(
     WalletData current,
     String? candidate, {
     String? excludingCylinderId,
   }) {
     final normalized = candidate?.trim().toLowerCase() ?? '';
     if (normalized.isEmpty) return;
-    final duplicate =
-        current.cylinders.any(
-          (value) =>
-              value.id != excludingCylinderId &&
-              value.serialNumber?.trim().toLowerCase() == normalized,
-        ) ||
-        current.consumables.any(
-          (value) => value.primaryCode.trim().toLowerCase() == normalized,
-        );
+    final duplicate = current.cylinders.any(
+      (value) =>
+          value.id != excludingCylinderId &&
+          value.serialNumber?.trim().toLowerCase() == normalized,
+    );
     if (duplicate) {
-      throw const WalletRuleException(
-        'That serial, barcode or QR code is already saved.',
-      );
+      throw const WalletRuleException('That cylinder serial is already saved.');
     }
   }
 
@@ -985,39 +677,22 @@ class WalletEngine {
     }
     final supplierIds = data.suppliers.map((value) => value.id).toSet();
     final cylinderIds = data.cylinders.map((value) => value.id).toSet();
-    final consumableIds = data.consumables.map((value) => value.id).toSet();
-    final consumableCodes = data.consumables
-        .map((value) => value.primaryCode.trim().toLowerCase())
-        .toSet();
     final cylinderCodes = data.cylinders
         .map((value) => value.serialNumber?.trim().toLowerCase())
         .whereType<String>()
         .where((value) => value.isNotEmpty)
         .toList();
-    final allCodes = <String>[...consumableCodes, ...cylinderCodes];
     final recordIds = <String>[
       ...data.suppliers.map((value) => value.id),
       ...data.cylinders.map((value) => value.id),
-      ...data.consumables.map((value) => value.id),
       ...data.events.map((value) => value.id),
-      ...data.consumableEvents.map((value) => value.id),
       ...data.reminders.map((value) => value.id),
     ];
     if (supplierIds.length != data.suppliers.length ||
         cylinderIds.length != data.cylinders.length ||
-        consumableIds.length != data.consumables.length ||
-        consumableCodes.length != data.consumables.length ||
         cylinderCodes.toSet().length != cylinderCodes.length ||
-        allCodes.toSet().length != allCodes.length ||
         recordIds.toSet().length != recordIds.length ||
-        recordIds.any((value) => value.trim().isEmpty) ||
-        data.consumables.any(
-          (value) =>
-              value.primaryCode.trim().isEmpty ||
-              !value.initialQuantity.isFinite ||
-              value.initialQuantity <= 0 ||
-              value.quantityUnit.trim().isEmpty,
-        )) {
+        recordIds.any((value) => value.trim().isEmpty)) {
       throw const WalletRuleException('The backup contains duplicate records.');
     }
     if (data.cylinders.any(
@@ -1033,46 +708,18 @@ class WalletEngine {
         ) ||
         data.reminders.any(
           (value) => !cylinderIds.contains(value.cylinderId),
-        ) ||
-        data.consumables.any(
-          (value) =>
-              value.supplierId != null &&
-              !supplierIds.contains(value.supplierId),
-        ) ||
-        data.consumableEvents.any(
-          (value) =>
-              !consumableIds.contains(value.consumableId) ||
-              (value.quantity != null &&
-                  (!value.quantity!.isFinite || value.quantity! <= 0)),
-        ) ||
-        !cylinderIds.containsAll(data.freeEditableSelection) ||
-        !consumableIds.containsAll(data.freeEditableConsumableSelection)) {
-      throw const WalletRuleException('The backup contains broken references.');
+        )) {
+      throw const WalletRuleException('The backup contains broken links.');
     }
-    for (final consumable in data.consumables) {
-      final outbound = data.consumableEvents
-          .where(
-            (value) =>
-                value.consumableId == consumable.id &&
-                (value.type == ConsumableEventType.issued ||
-                    value.type == ConsumableEventType.used),
-          )
-          .fold<double>(0, (total, value) => total + (value.quantity ?? 0));
-      if (outbound > consumable.initialQuantity) {
-        throw const WalletRuleException(
-          'The backup contains an invalid consumable balance.',
-        );
-      }
+    final editable = data.freeEditableSelection.toSet();
+    if (editable.length > freeEditableCylinderLimit ||
+        !cylinderIds.containsAll(editable)) {
+      throw const WalletRuleException(
+        'The backup contains invalid free records.',
+      );
     }
   }
 }
-
-String _plainNumber(double value) => value == value.roundToDouble()
-    ? value.toInt().toString()
-    : value
-          .toStringAsFixed(2)
-          .replaceFirst(RegExp(r'0+$'), '')
-          .replaceFirst(RegExp(r'\.$'), '');
 
 String? _clean(String? value) {
   final cleaned = value?.trim();

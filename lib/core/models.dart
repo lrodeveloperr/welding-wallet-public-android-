@@ -1,11 +1,7 @@
 import 'dart:collection';
 
-import 'consumables.dart';
-export 'consumables.dart';
-
 const int walletSchemaVersion = 5;
 const int freeEditableCylinderLimit = 3;
-const int freeEditableConsumableLimit = 3;
 const int maximumBackupBytes = 5 * 1024 * 1024;
 
 const List<String> supportedLocales = <String>[
@@ -83,11 +79,7 @@ enum ReminderDelivery {
   needsCancellation,
 }
 
-enum PaywallReason {
-  addFourthCylinder,
-  addFourthConsumableBatch,
-  editLockedCylinderAfterDowngrade,
-}
+enum PaywallReason { addFourthCylinder, editLockedCylinderAfterDowngrade }
 
 String canonicalLocale(String? candidate) {
   final normalized = candidate?.trim().replaceAll('_', '-') ?? '';
@@ -832,26 +824,17 @@ class WalletData {
     required this.settings,
     required List<Supplier> suppliers,
     required List<Cylinder> cylinders,
-    List<ConsumableBatch> consumables = const <ConsumableBatch>[],
     required List<CylinderEvent> events,
-    List<ConsumableEvent> consumableEvents = const <ConsumableEvent>[],
     required List<Reminder> reminders,
     required this.pendingDraft,
-    this.pendingConsumableDraft,
     required List<String> freeEditableSelection,
-    List<String> freeEditableConsumableSelection = const <String>[],
     required this.entitlementCache,
   }) : suppliers = List<Supplier>.unmodifiable(suppliers),
        cylinders = List<Cylinder>.unmodifiable(cylinders),
-       consumables = List<ConsumableBatch>.unmodifiable(consumables),
        events = List<CylinderEvent>.unmodifiable(events),
-       consumableEvents = List<ConsumableEvent>.unmodifiable(consumableEvents),
        reminders = List<Reminder>.unmodifiable(reminders),
        freeEditableSelection = List<String>.unmodifiable(
          freeEditableSelection.toSet(),
-       ),
-       freeEditableConsumableSelection = List<String>.unmodifiable(
-         freeEditableConsumableSelection.toSet(),
        );
 
   final int schemaVersion;
@@ -859,14 +842,10 @@ class WalletData {
   final AppSettings settings;
   final List<Supplier> suppliers;
   final List<Cylinder> cylinders;
-  final List<ConsumableBatch> consumables;
   final List<CylinderEvent> events;
-  final List<ConsumableEvent> consumableEvents;
   final List<Reminder> reminders;
   final PendingCylinderDraft? pendingDraft;
-  final PendingConsumableDraft? pendingConsumableDraft;
   final List<String> freeEditableSelection;
-  final List<String> freeEditableConsumableSelection;
   final Entitlement entitlementCache;
 
   factory WalletData.empty({String locale = 'en', String? currencyCode}) =>
@@ -879,14 +858,10 @@ class WalletData {
         ),
         suppliers: const <Supplier>[],
         cylinders: const <Cylinder>[],
-        consumables: const <ConsumableBatch>[],
         events: const <CylinderEvent>[],
-        consumableEvents: const <ConsumableEvent>[],
         reminders: const <Reminder>[],
         pendingDraft: null,
-        pendingConsumableDraft: null,
         freeEditableSelection: const <String>[],
-        freeEditableConsumableSelection: const <String>[],
         entitlementCache: Entitlement.free,
       );
 
@@ -894,16 +869,11 @@ class WalletData {
     AppSettings? settings,
     List<Supplier>? suppliers,
     List<Cylinder>? cylinders,
-    List<ConsumableBatch>? consumables,
     List<CylinderEvent>? events,
-    List<ConsumableEvent>? consumableEvents,
     List<Reminder>? reminders,
     PendingCylinderDraft? pendingDraft,
     bool clearPendingDraft = false,
-    PendingConsumableDraft? pendingConsumableDraft,
-    bool clearPendingConsumableDraft = false,
     List<String>? freeEditableSelection,
-    List<String>? freeEditableConsumableSelection,
     Entitlement? entitlementCache,
   }) => WalletData(
     schemaVersion: walletSchemaVersion,
@@ -911,17 +881,10 @@ class WalletData {
     settings: settings ?? this.settings,
     suppliers: suppliers ?? this.suppliers,
     cylinders: cylinders ?? this.cylinders,
-    consumables: consumables ?? this.consumables,
     events: events ?? this.events,
-    consumableEvents: consumableEvents ?? this.consumableEvents,
     reminders: reminders ?? this.reminders,
     pendingDraft: clearPendingDraft ? null : pendingDraft ?? this.pendingDraft,
-    pendingConsumableDraft: clearPendingConsumableDraft
-        ? null
-        : pendingConsumableDraft ?? this.pendingConsumableDraft,
     freeEditableSelection: freeEditableSelection ?? this.freeEditableSelection,
-    freeEditableConsumableSelection:
-        freeEditableConsumableSelection ?? this.freeEditableConsumableSelection,
     entitlementCache: entitlementCache ?? this.entitlementCache,
   );
 
@@ -931,14 +894,10 @@ class WalletData {
     settings: settings,
     suppliers: suppliers,
     cylinders: cylinders,
-    consumables: consumables,
     events: events,
-    consumableEvents: consumableEvents,
     reminders: reminders,
     pendingDraft: pendingDraft,
-    pendingConsumableDraft: pendingConsumableDraft,
     freeEditableSelection: freeEditableSelection,
-    freeEditableConsumableSelection: freeEditableConsumableSelection,
     entitlementCache: entitlement,
   );
 
@@ -955,20 +914,12 @@ class WalletData {
       if (!includeLocalPhotos) json['localPhotoUri'] = null;
       return json;
     }).toList(),
-    'consumables': consumables
-        .map((value) => value.toJson(includeLocalDocuments: includeLocalPhotos))
-        .toList(),
     'events': events.map((value) => value.toJson()).toList(),
-    'consumableEvents': consumableEvents
-        .map((value) => value.toJson())
-        .toList(),
     'reminders': reminders.map((value) => value.toJson()).toList(),
     'pendingDraft': pendingDraft?.toJson(
       includeLocalPhotos: includeLocalPhotos,
     ),
-    'pendingConsumableDraft': pendingConsumableDraft?.toJson(),
     'freeEditableSelection': freeEditableSelection,
-    'freeEditableConsumableSelection': freeEditableConsumableSelection,
     if (includeEntitlement) 'entitlementCache': entitlementCache.toJson(),
   };
 
@@ -988,31 +939,15 @@ class WalletData {
       ),
       suppliers: maps(json['suppliers']).map(Supplier.fromJson).toList(),
       cylinders: maps(json['cylinders']).map(Cylinder.fromJson).toList(),
-      consumables: maps(json['consumables'])
-          .map(ConsumableBatch.fromJson)
-          .toList(),
       events: maps(json['events']).map(CylinderEvent.fromJson).toList(),
-      consumableEvents: maps(json['consumableEvents'])
-          .map(ConsumableEvent.fromJson)
-          .toList(),
       reminders: maps(json['reminders']).map(Reminder.fromJson).toList(),
       pendingDraft: json['pendingDraft'] is Map
           ? PendingCylinderDraft.fromJson(
               Map<String, Object?>.from(json['pendingDraft']! as Map),
             )
           : null,
-      pendingConsumableDraft: json['pendingConsumableDraft'] is Map
-          ? PendingConsumableDraft.fromJson(
-              Map<String, Object?>.from(json['pendingConsumableDraft']! as Map),
-            )
-          : null,
       freeEditableSelection:
           (json['freeEditableSelection'] as List?)
-              ?.map((value) => value.toString())
-              .toList() ??
-          const <String>[],
-      freeEditableConsumableSelection:
-          (json['freeEditableConsumableSelection'] as List?)
               ?.map((value) => value.toString())
               .toList() ??
           const <String>[],

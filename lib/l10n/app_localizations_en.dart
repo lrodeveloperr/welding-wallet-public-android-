@@ -10,5 +10,5 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'Welding Wallet';
+  String get appTitle => 'Welding Gas Wallet';
 }

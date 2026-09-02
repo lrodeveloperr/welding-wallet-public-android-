@@ -8,7 +8,6 @@ import 'core/wallet_engine.dart';
 import 'services/ad_service.dart';
 import 'services/backup_service.dart';
 import 'services/billing_service.dart';
-import 'services/document_store.dart';
 import 'services/reminder_service.dart';
 
 class SelectedBackup {
@@ -29,12 +28,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     BillingService? billing,
     AdService? ads,
     ReminderService? reminders,
-    DocumentStore? documents,
     BackupService? backups,
   }) : billing = billing ?? BillingService(),
        ads = ads ?? AdService(),
        reminders = reminders ?? ReminderService(),
-       documents = documents ?? DocumentStore(),
        backups = backups ?? BackupService() {
     this.ads.addListener(_handleAdChange);
   }
@@ -43,7 +40,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   final BillingService billing;
   final AdService ads;
   final ReminderService reminders;
-  final DocumentStore documents;
   final BackupService backups;
 
   WalletData? wallet;
@@ -68,9 +64,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         entitlement,
       ) async {
         await engine.resumePendingDraft(entitlement);
-        await engine.resumePendingConsumableDraft(entitlement);
         await reload(notify: true);
-        notice = 'Welding Wallet Pro is active.';
+        notice = 'Welding Gas Wallet Pro is active.';
         notifyListeners();
       });
       try {
@@ -139,64 +134,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       error = _message(value);
       notifyListeners();
       return null;
-    }
-  }
-
-  Future<AddConsumableResult?> addConsumable(AddConsumableDraft draft) async {
-    clearMessage();
-    try {
-      final result = await engine.addConsumableOrGate(draft);
-      await reload(notify: false);
-      notice = result.wasAdded ? 'Consumable batch added.' : null;
-      notifyListeners();
-      return result;
-    } catch (value) {
-      error = _message(value);
-      notifyListeners();
-      return null;
-    }
-  }
-
-  Future<bool> pickAndAttachCertificate(String consumableId) async {
-    clearMessage();
-    try {
-      final current = wallet!.consumables.firstWhere(
-        (value) => value.id == consumableId,
-      );
-      final oldPath = current.certificateLocalPath;
-      final stored = await documents.pickAndStoreCertificate(consumableId);
-      if (stored == null) return false;
-      try {
-        await engine.attachConsumableCertificate(
-          consumableId,
-          localPath: stored.path,
-          originalName: stored.originalName,
-        );
-      } catch (_) {
-        await documents.delete(stored.path);
-        rethrow;
-      }
-      if (oldPath != stored.path) await documents.delete(oldPath);
-      await reload(notify: false);
-      notice = 'Certificate attached.';
-      notifyListeners();
-      return true;
-    } catch (value) {
-      error = _message(value);
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<bool> openCertificate(String localPath) async {
-    clearMessage();
-    try {
-      await documents.open(localPath);
-      return true;
-    } catch (value) {
-      error = 'The certificate file could not be opened.';
-      notifyListeners();
-      return false;
     }
   }
 
@@ -373,7 +310,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<bool> deleteAllData() async => run(() async {
     await reminders.cancelAll();
-    await documents.deleteAll();
     await engine.deleteAllWalletData(confirmed: true);
   }, success: 'Wallet deleted.');
 

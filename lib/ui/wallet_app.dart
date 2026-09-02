@@ -7,7 +7,6 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_controller.dart';
@@ -44,7 +43,7 @@ class _WeldingWalletAppState extends State<WeldingWalletApp> {
       final parts = localeName.split('-');
       return MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'Welding Wallet',
+        title: 'Welding Gas Wallet',
         theme: buildWalletTheme(),
         locale: Locale.fromSubtags(
           languageCode: parts.first,
@@ -125,11 +124,9 @@ class _WalletShell extends StatelessWidget {
         wallet: wallet,
         onScan: () => _openScanner(context, controller),
         onAddCylinder: () => _openAddCylinder(context, controller),
-        onAddConsumable: () => _openAddConsumable(context, controller),
         onReminder: () => _openReminder(context, controller),
         onCylinder: (cylinder) => _openCylinder(context, controller, cylinder),
       ),
-      _ConsumablesScreen(controller: controller),
       _ActivityScreen(wallet: wallet),
       _SettingsScreen(
         wallet: wallet,
@@ -187,11 +184,6 @@ class _WalletShell extends StatelessWidget {
                 icon: Icon(Icons.propane_tank_outlined),
                 selectedIcon: Icon(Icons.propane_tank),
                 label: 'Gas',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.inventory_2_outlined),
-                selectedIcon: Icon(Icons.inventory_2),
-                label: 'Consumables',
               ),
               NavigationDestination(
                 icon: Icon(Icons.receipt_long_outlined),
@@ -305,7 +297,6 @@ class _DashboardScreen extends StatelessWidget {
     required this.wallet,
     required this.onScan,
     required this.onAddCylinder,
-    required this.onAddConsumable,
     required this.onReminder,
     required this.onCylinder,
   });
@@ -313,7 +304,6 @@ class _DashboardScreen extends StatelessWidget {
   final WalletData wallet;
   final VoidCallback onScan;
   final VoidCallback onAddCylinder;
-  final VoidCallback onAddConsumable;
   final VoidCallback onReminder;
   final ValueChanged<Cylinder> onCylinder;
 
@@ -325,12 +315,6 @@ class _DashboardScreen extends StatelessWidget {
     final past = wallet.cylinders
         .where((value) => !value.consumesCurrentSlot)
         .toList();
-    final consumables = wallet.consumables
-        .where((value) => value.isActive)
-        .toList();
-    final missingCertificates = consumables
-        .where((value) => !value.hasCertificate)
-        .length;
     return CustomScrollView(
       key: const Key('dashboard-scroll'),
       slivers: [
@@ -352,7 +336,7 @@ class _DashboardScreen extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Welding Wallet Dashboard',
+                      'Welding Gas Wallet',
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
                   ),
@@ -363,14 +347,14 @@ class _DashboardScreen extends StatelessWidget {
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final columns = constraints.maxWidth >= 720 ? 4 : 2;
+                  final columns = constraints.maxWidth >= 720 ? 3 : 2;
                   return GridView.count(
                     crossAxisCount: columns,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
-                    childAspectRatio: columns == 4 ? 1.55 : 1.42,
+                    childAspectRatio: columns == 3 ? 1.55 : 1.42,
                     children: [
                       _QuickAction(
                         label: 'Scan',
@@ -389,14 +373,6 @@ class _DashboardScreen extends StatelessWidget {
                         onTap: onAddCylinder,
                       ),
                       _QuickAction(
-                        label: 'Add consumable',
-                        caption: 'Batch / lot',
-                        icon: Icons.inventory_2_outlined,
-                        color: WalletColors.amber,
-                        soft: WalletColors.amberSoft,
-                        onTap: onAddConsumable,
-                      ),
-                      _QuickAction(
                         label: 'Reminder',
                         caption: 'Plan ahead',
                         icon: Icons.notifications_active_outlined,
@@ -411,63 +387,17 @@ class _DashboardScreen extends StatelessWidget {
               const SizedBox(height: 28),
               const _SectionLabel('SUMMARY & COUNTS'),
               const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final wide = constraints.maxWidth >= 720;
-                  final cards = <Widget>[
-                    _SummaryCard(
-                      label: 'GAS',
-                      value: '${current.length}',
-                      detail: 'gas record',
-                      icon: Icons.propane_tank_outlined,
-                      color: WalletColors.blue,
-                    ),
-                    _SummaryCard(
-                      label: 'CONSUMABLES',
-                      value: '${consumables.length}',
-                      detail: 'batch',
-                      icon: Icons.inventory_2_outlined,
-                      color: WalletColors.amber,
-                    ),
-                    _SummaryCard(
-                      label: 'CERTIFICATES',
-                      value: '$missingCertificates',
-                      detail: 'missing',
-                      icon: Icons.description_outlined,
-                      color: WalletColors.green,
-                    ),
-                  ];
-                  if (wide) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: cards
-                          .map(
-                            (card) => Expanded(
-                              child: Padding(
-                                padding: const EdgeInsetsDirectional.only(
-                                  end: 12,
-                                ),
-                                child: card,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    );
-                  }
-                  return Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(child: cards[0]),
-                          const SizedBox(width: 12),
-                          Expanded(child: cards[1]),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(width: double.infinity, child: cards[2]),
-                    ],
-                  );
-                },
+              SizedBox(
+                width: double.infinity,
+                child: _SummaryCard(
+                  label: 'GAS',
+                  value: '${current.length}',
+                  detail: current.length == 1
+                      ? 'current cylinder'
+                      : 'current cylinders',
+                  icon: Icons.propane_tank_outlined,
+                  color: WalletColors.blue,
+                ),
               ),
               const SizedBox(height: 28),
               Row(
@@ -778,798 +708,6 @@ class _SectionLabel extends StatelessWidget {
   );
 }
 
-class _ConsumablesScreen extends StatefulWidget {
-  const _ConsumablesScreen({required this.controller});
-  final AppController controller;
-
-  @override
-  State<_ConsumablesScreen> createState() => _ConsumablesScreenState();
-}
-
-enum _ConsumableFilter { active, missing, archived }
-
-class _ConsumablesScreenState extends State<_ConsumablesScreen> {
-  _ConsumableFilter filter = _ConsumableFilter.active;
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: widget.controller,
-    builder: (context, _) {
-      final wallet = widget.controller.wallet!;
-      var values = wallet.consumables.where((value) {
-        return switch (filter) {
-          _ConsumableFilter.active => value.isActive,
-          _ConsumableFilter.missing => value.isActive && !value.hasCertificate,
-          _ConsumableFilter.archived => !value.isActive,
-        };
-      }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      return _ScreenFrame(
-        title: 'Consumables',
-        subtitle:
-            'Batch, lot and certificate traceability without the ERP overhead.',
-        trailing: FilledButton.icon(
-          onPressed: () => _openAddConsumable(context, widget.controller),
-          icon: const Icon(Icons.add),
-          label: const Text('Add'),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 8,
-              children: [
-                FilterChip(
-                  label: const Text('All'),
-                  selected: filter == _ConsumableFilter.active,
-                  onSelected: (_) =>
-                      setState(() => filter = _ConsumableFilter.active),
-                ),
-                FilterChip(
-                  label: const Text('Missing'),
-                  selected: filter == _ConsumableFilter.missing,
-                  onSelected: (_) =>
-                      setState(() => filter = _ConsumableFilter.missing),
-                ),
-                FilterChip(
-                  label: const Text('Archived'),
-                  selected: filter == _ConsumableFilter.archived,
-                  onSelected: (_) =>
-                      setState(() => filter = _ConsumableFilter.archived),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (values.isEmpty)
-              _EmptyCard(
-                icon: Icons.inventory_2_outlined,
-                title: filter == _ConsumableFilter.missing
-                    ? 'No missing certificates'
-                    : filter == _ConsumableFilter.archived
-                    ? 'No archived batch'
-                    : 'No consumables yet',
-                body: filter == _ConsumableFilter.missing
-                    ? 'Every active batch has a certificate.'
-                    : filter == _ConsumableFilter.archived
-                    ? 'Archived batch appears here.'
-                    : 'Add a wire, electrode, rod or flux batch.',
-                action: filter == _ConsumableFilter.active
-                    ? 'Add consumable'
-                    : null,
-                onAction: filter == _ConsumableFilter.active
-                    ? () => _openAddConsumable(context, widget.controller)
-                    : null,
-              )
-            else
-              ...values.map(
-                (value) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _ConsumableCard(
-                    consumable: value,
-                    remaining: value.remainingQuantity(wallet.consumableEvents),
-                    onTap: () =>
-                        _openConsumable(context, widget.controller, value.id),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
-class _ConsumableCard extends StatelessWidget {
-  const _ConsumableCard({
-    required this.consumable,
-    required this.remaining,
-    required this.onTap,
-  });
-  final ConsumableBatch consumable;
-  final double remaining;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: WalletColors.amberSoft,
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: const Icon(
-                Icons.inventory_2_outlined,
-                color: WalletColors.amber,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    consumable.productName,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    <String>[
-                      'Batch ${consumable.batchLot}',
-                      if (consumable.classification != null)
-                        consumable.classification!,
-                      if (consumable.manufacturer != null)
-                        consumable.manufacturer!,
-                      '${formatDecimal(remaining)} ${consumable.quantityUnit} left',
-                    ].join(' · '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: consumable.hasCertificate
-                    ? WalletColors.greenSoft
-                    : WalletColors.amberSoft,
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Text(
-                consumable.hasCertificate ? 'CERT' : 'NO CERT',
-                style: TextStyle(
-                  color: consumable.hasCertificate
-                      ? WalletColors.green
-                      : WalletColors.amber,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: WalletColors.muted),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-Future<void> _openAddConsumable(
-  BuildContext context,
-  AppController controller, {
-  String? scannedCode,
-}) async {
-  final draft = await showModalBottomSheet<AddConsumableDraft>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) =>
-        _AddConsumableSheet(controller: controller, scannedCode: scannedCode),
-  );
-  if (draft == null) return;
-  final result = await controller.addConsumable(draft);
-  if (!context.mounted || result == null || result.wasAdded) return;
-  await _openPaywall(context, controller);
-}
-
-class _AddConsumableSheet extends StatefulWidget {
-  const _AddConsumableSheet({required this.controller, this.scannedCode});
-  final AppController controller;
-  final String? scannedCode;
-
-  @override
-  State<_AddConsumableSheet> createState() => _AddConsumableSheetState();
-}
-
-class _AddConsumableSheetState extends State<_AddConsumableSheet> {
-  late final code = TextEditingController(text: widget.scannedCode);
-  final product = TextEditingController();
-  final batch = TextEditingController();
-  final classification = TextEditingController();
-  final manufacturer = TextEditingController();
-  final location = TextEditingController();
-  final quantity = TextEditingController(text: '1');
-  ConsumableType type = ConsumableType.wire;
-  String? supplierId;
-  String quantityUnit = 'pack';
-  String? formError;
-
-  @override
-  void dispose() {
-    code.dispose();
-    product.dispose();
-    batch.dispose();
-    classification.dispose();
-    manufacturer.dispose();
-    location.dispose();
-    quantity.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => _FormSheet(
-    title: 'Add consumable',
-    subtitle: 'Product + batch/lot is enough. Everything else is optional.',
-    action: 'Save batch',
-    onAction: () {
-      final parsedQuantity = double.tryParse(
-        quantity.text.trim().replaceAll(',', '.'),
-      );
-      final normalizedCode = code.text.trim().toLowerCase();
-      final duplicateCode =
-          normalizedCode.isNotEmpty &&
-          (widget.controller.wallet!.cylinders.any(
-                (value) =>
-                    value.serialNumber?.trim().toLowerCase() == normalizedCode,
-              ) ||
-              widget.controller.wallet!.consumables.any(
-                (value) =>
-                    value.primaryCode.trim().toLowerCase() == normalizedCode,
-              ));
-      final error = product.text.trim().isEmpty
-          ? 'Enter a product.'
-          : batch.text.trim().isEmpty
-          ? 'Enter a batch or lot.'
-          : parsedQuantity == null || parsedQuantity <= 0
-          ? 'Check quantity.'
-          : duplicateCode
-          ? 'Code already saved.'
-          : null;
-      if (error != null) {
-        setState(() => formError = error);
-        return;
-      }
-      Navigator.pop(
-        context,
-        AddConsumableDraft(
-          type: type,
-          productName: product.text,
-          batchLot: batch.text,
-          primaryCode: code.text,
-          classification: classification.text,
-          manufacturer: manufacturer.text,
-          supplierId: supplierId,
-          location: location.text,
-          receiptDate: DateTime.now(),
-          initialQuantity: parsedQuantity!,
-          quantityUnit: quantityUnit,
-        ),
-      );
-    },
-    children: [
-      if (formError != null) ...[
-        _InlineError(formError!),
-        const SizedBox(height: 12),
-      ],
-      DropdownButtonFormField<ConsumableType>(
-        initialValue: type,
-        decoration: const InputDecoration(labelText: 'Type'),
-        items: ConsumableType.values
-            .map(
-              (value) => DropdownMenuItem(
-                value: value,
-                child: Text(consumableTypeLabel(value)),
-              ),
-            )
-            .toList(),
-        onChanged: (value) => setState(() => type = value ?? type),
-      ),
-      const SizedBox(height: 14),
-      TextField(
-        controller: product,
-        autofocus: true,
-        textInputAction: TextInputAction.next,
-        decoration: const InputDecoration(
-          labelText: 'Product',
-          hintText: 'ER70S-6 wire',
-        ),
-      ),
-      const SizedBox(height: 14),
-      TextField(
-        controller: batch,
-        textInputAction: TextInputAction.next,
-        decoration: const InputDecoration(labelText: 'Batch / lot'),
-      ),
-      const SizedBox(height: 14),
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: quantity,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(labelText: 'Quantity'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              initialValue: quantityUnit,
-              decoration: const InputDecoration(labelText: 'Unit'),
-              items: const ['pack', 'spool', 'kg', 'lb', 'item']
-                  .map(
-                    (value) =>
-                        DropdownMenuItem(value: value, child: Text(value)),
-                  )
-                  .toList(),
-              onChanged: (value) =>
-                  setState(() => quantityUnit = value ?? quantityUnit),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 14),
-      TextField(
-        controller: code,
-        decoration: const InputDecoration(
-          labelText: 'Barcode / QR (optional)',
-          helperText:
-              'Leave blank and Welding Wallet will create an internal code.',
-        ),
-      ),
-      const SizedBox(height: 8),
-      ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        title: const Text('More'),
-        children: [
-          TextField(
-            controller: classification,
-            decoration: const InputDecoration(
-              labelText: 'Classification (optional)',
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: manufacturer,
-            decoration: const InputDecoration(
-              labelText: 'Manufacturer (optional)',
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: location,
-            decoration: const InputDecoration(labelText: 'Location (optional)'),
-          ),
-          const SizedBox(height: 12),
-          _SupplierField(
-            suppliers: widget.controller.wallet!.suppliers,
-            supplierId: supplierId,
-            onChanged: (value) => setState(() => supplierId = value),
-            onAdd: () async {
-              final supplier = await _quickCreateSupplier(
-                context,
-                widget.controller,
-              );
-              if (mounted && supplier != null) {
-                setState(() => supplierId = supplier.id);
-              }
-            },
-          ),
-        ],
-      ),
-    ],
-  );
-}
-
-Future<void> _openConsumable(
-  BuildContext context,
-  AppController controller,
-  String consumableId,
-) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) =>
-        _ConsumableSheet(controller: controller, consumableId: consumableId),
-  );
-}
-
-class _ConsumableSheet extends StatelessWidget {
-  const _ConsumableSheet({
-    required this.controller,
-    required this.consumableId,
-  });
-  final AppController controller;
-  final String consumableId;
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: controller,
-    builder: (context, _) {
-      final wallet = controller.wallet!;
-      final consumable = _firstOrNull(
-        wallet.consumables.where((value) => value.id == consumableId),
-      );
-      if (consumable == null) return const SizedBox.shrink();
-      final events =
-          wallet.consumableEvents
-              .where((value) => value.consumableId == consumableId)
-              .toList()
-            ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
-      final remaining = consumable.remainingQuantity(events);
-      return DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.92,
-        minChildSize: 0.55,
-        builder: (context, scrollController) => ListView(
-          controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 32),
-          children: [
-            const Center(child: _Grabber()),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: WalletColors.amberSoft,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.inventory_2_outlined,
-                    color: WalletColors.amber,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        consumable.productName,
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
-                      Text(
-                        '${consumableTypeLabel(consumable.type)} · Batch ${consumable.batchLot}',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _MiniStat(
-                    label: 'RECEIVED',
-                    value:
-                        '${formatDecimal(consumable.initialQuantity)} ${consumable.quantityUnit}',
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _MiniStat(
-                    label: 'LEFT',
-                    value:
-                        '${formatDecimal(remaining)} ${consumable.quantityUnit}',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Card(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.qr_code),
-                    title: const Text('Code'),
-                    subtitle: Text(consumable.primaryCode),
-                    trailing: IconButton(
-                      tooltip: 'Show QR label',
-                      icon: const Icon(Icons.qr_code_2),
-                      onPressed: () => showDialog<void>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('QR label'),
-                          content: SizedBox(
-                            width: 240,
-                            height: 280,
-                            child: Column(
-                              children: [
-                                QrImageView(
-                                  data: consumable.primaryCode,
-                                  size: 220,
-                                ),
-                                Text(
-                                  consumable.batchLot,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Done'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.description_outlined),
-                    title: Text(
-                      consumable.hasCertificate
-                          ? 'Certificate attached'
-                          : 'Certificate missing',
-                    ),
-                    subtitle: consumable.certificateOriginalName == null
-                        ? null
-                        : Text(consumable.certificateOriginalName!),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: consumable.hasCertificate || consumable.isActive
-                        ? () async {
-                            if (consumable.hasCertificate) {
-                              await controller.openCertificate(
-                                consumable.certificateLocalPath!,
-                              );
-                            } else {
-                              await controller.pickAndAttachCertificate(
-                                consumable.id,
-                              );
-                            }
-                          }
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-            if (consumable.isActive) ...[
-              const SizedBox(height: 20),
-              const _SectionLabel('ACTIONS'),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _recordConsumableEvent(
-                      context,
-                      controller,
-                      consumable,
-                      ConsumableEventType.issued,
-                    ),
-                    icon: const Icon(Icons.outbox_outlined),
-                    label: const Text('Issue'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _recordConsumableEvent(
-                      context,
-                      controller,
-                      consumable,
-                      ConsumableEventType.used,
-                    ),
-                    icon: const Icon(Icons.task_alt),
-                    label: const Text('Use'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        controller.pickAndAttachCertificate(consumable.id),
-                    icon: const Icon(Icons.attach_file),
-                    label: Text(
-                      consumable.hasCertificate
-                          ? 'Replace certificate'
-                          : 'Attach certificate',
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        _archiveConsumable(context, controller, consumable),
-                    icon: const Icon(Icons.archive_outlined),
-                    label: const Text('Archive'),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 24),
-            const _SectionLabel('HISTORY'),
-            const SizedBox(height: 10),
-            if (events.isEmpty)
-              const _EmptyCard(
-                icon: Icons.history,
-                title: 'No history',
-                body: 'Receipt, issue, use and certificate events appear here.',
-              )
-            else
-              ...events.map(
-                (event) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _ConsumableEventCard(
-                    event: event,
-                    consumable: consumable,
-                    wallet: wallet,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
-class _ConsumableEventCard extends StatelessWidget {
-  const _ConsumableEventCard({
-    required this.event,
-    required this.consumable,
-    required this.wallet,
-  });
-  final ConsumableEvent event;
-  final ConsumableBatch consumable;
-  final WalletData wallet;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(
-      leading: const CircleAvatar(child: Icon(Icons.history)),
-      title: Text(consumableEventLabel(event.type)),
-      subtitle: Text(
-        '${consumable.productName} · ${formatDateTime(event.occurredAt, wallet)}'
-        '${event.reference == null ? '' : ' · ${event.reference}'}',
-      ),
-      trailing: event.quantity == null
-          ? null
-          : Text(formatDecimal(event.quantity!)),
-    ),
-  );
-}
-
-Future<void> _archiveConsumable(
-  BuildContext context,
-  AppController controller,
-  ConsumableBatch consumable,
-) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Archive batch?'),
-      content: const Text('History stays available under Archived.'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Archive'),
-        ),
-      ],
-    ),
-  );
-  if (confirmed == true) {
-    await controller.run(
-      () => controller.engine.archiveConsumable(consumable.id),
-      success: 'Batch archived.',
-    );
-  }
-}
-
-Future<void> _recordConsumableEvent(
-  BuildContext context,
-  AppController controller,
-  ConsumableBatch consumable,
-  ConsumableEventType type,
-) async {
-  final quantity = TextEditingController();
-  final reference = TextEditingController();
-  String? validationError;
-  final submitted = await showDialog<bool>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: Text(
-          type == ConsumableEventType.issued ? 'Issue batch' : 'Record use',
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: quantity,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: InputDecoration(
-                labelText: 'Quantity (${consumable.quantityUnit})',
-                errorText: validationError,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reference,
-              decoration: const InputDecoration(
-                labelText: 'Job / reference (optional)',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = double.tryParse(
-                quantity.text.trim().replaceAll(',', '.'),
-              );
-              if (value == null || value <= 0) {
-                setDialogState(() => validationError = 'Check quantity.');
-                return;
-              }
-              final remaining = consumable.remainingQuantity(
-                controller.wallet!.consumableEvents,
-              );
-              if (value > remaining) {
-                setDialogState(
-                  () => validationError =
-                      'Only ${formatDecimal(remaining)} left.',
-                );
-                return;
-              }
-              Navigator.pop(context, true);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    ),
-  );
-  if (submitted == true) {
-    final parsed = double.tryParse(quantity.text.replaceAll(',', '.'));
-    await controller.run(
-      () => controller.engine.recordConsumableAction(
-        consumable.id,
-        type,
-        quantity: parsed,
-        reference: reference.text,
-      ),
-      success: type == ConsumableEventType.issued
-          ? 'Issue recorded.'
-          : 'Use recorded.',
-    );
-  }
-  quantity.dispose();
-  reference.dispose();
-}
-
-enum _UnknownScanType { cylinder, consumable }
-
 Future<void> _openScanner(
   BuildContext context,
   AppController controller,
@@ -1582,18 +720,8 @@ Future<void> _openScanner(
   );
   if (!context.mounted || code == null || code.trim().isEmpty) return;
   final normalized = code.trim().toLowerCase();
-  final wallet = controller.wallet!;
-  final consumable = _firstOrNull(
-    wallet.consumables.where(
-      (value) => value.primaryCode.trim().toLowerCase() == normalized,
-    ),
-  );
-  if (consumable != null) {
-    await _openConsumable(context, controller, consumable.id);
-    return;
-  }
   final cylinder = _firstOrNull(
-    wallet.cylinders.where(
+    controller.wallet!.cylinders.where(
       (value) => value.serialNumber?.trim().toLowerCase() == normalized,
     ),
   );
@@ -1601,40 +729,8 @@ Future<void> _openScanner(
     await _openCylinder(context, controller, cylinder);
     return;
   }
-  if (!context.mounted) return;
-  final type = await showModalBottomSheet<_UnknownScanType>(
-    context: context,
-    useSafeArea: true,
-    builder: (context) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SheetHeader(
-            title: 'Not saved',
-            subtitle: 'What did you scan?',
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            leading: const Icon(Icons.propane_tank_outlined),
-            title: const Text('Cylinder'),
-            onTap: () => Navigator.pop(context, _UnknownScanType.cylinder),
-          ),
-          ListTile(
-            leading: const Icon(Icons.inventory_2_outlined),
-            title: const Text('Consumable'),
-            onTap: () => Navigator.pop(context, _UnknownScanType.consumable),
-          ),
-        ],
-      ),
-    ),
-  );
-  if (!context.mounted || type == null) return;
-  if (type == _UnknownScanType.cylinder) {
+  if (context.mounted) {
     await _openAddCylinder(context, controller, scannedCode: code.trim());
-  } else {
-    await _openAddConsumable(context, controller, scannedCode: code.trim());
   }
 }
 
@@ -1660,7 +756,7 @@ class _ScannerSheetState extends State<_ScannerSheet> {
         const _SheetHeader(
           title: 'Scan',
           subtitle:
-              'Cylinder serial, manufacturer barcode or Welding Wallet QR.',
+              'Cylinder serial, manufacturer barcode or Welding Gas Wallet QR.',
         ),
         const SizedBox(height: 16),
         ClipRRect(
@@ -1725,79 +821,29 @@ class _ScannerSheetState extends State<_ScannerSheet> {
   );
 }
 
-String consumableTypeLabel(ConsumableType value) => switch (value) {
-  ConsumableType.wire => 'Wire',
-  ConsumableType.electrode => 'Electrode',
-  ConsumableType.rod => 'Rod',
-  ConsumableType.flux => 'Flux',
-  ConsumableType.other => 'Other',
-};
-
-String consumableEventLabel(ConsumableEventType value) => switch (value) {
-  ConsumableEventType.received => 'Batch received',
-  ConsumableEventType.issued => 'Batch issued',
-  ConsumableEventType.used => 'Use recorded',
-  ConsumableEventType.certificateAttached => 'Certificate attached',
-  ConsumableEventType.certificateReplaced => 'Certificate replaced',
-  ConsumableEventType.archived => 'Batch archived',
-};
-
 class _ActivityScreen extends StatelessWidget {
   const _ActivityScreen({required this.wallet});
   final WalletData wallet;
 
   @override
   Widget build(BuildContext context) {
-    final entries = <({DateTime time, Widget child})>[
-      ...wallet.events.map(
-        (event) => (
-          time: event.occurredAt,
-          child: _EventCard(event: event, wallet: wallet),
-        ),
-      ),
-      ...wallet.consumableEvents.map((event) {
-        final consumable = _firstOrNull(
-          wallet.consumables.where((value) => value.id == event.consumableId),
-        );
-        return (
-          time: event.occurredAt,
-          child: _ConsumableEventCard(
-            event: event,
-            consumable:
-                consumable ??
-                ConsumableBatch(
-                  id: event.consumableId,
-                  primaryCode: '',
-                  type: ConsumableType.other,
-                  productName: 'Deleted consumable',
-                  batchLot: '—',
-                  receiptDate: event.occurredAt,
-                  lifecycle: ConsumableLifecycle.archived,
-                  createdAt: event.occurredAt,
-                  updatedAt: event.occurredAt,
-                  initialQuantity: 1,
-                  quantityUnit: 'pack',
-                ),
-            wallet: wallet,
-          ),
-        );
-      }),
-    ]..sort((a, b) => b.time.compareTo(a.time));
+    final events = wallet.events.toList()
+      ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
     return _ScreenFrame(
       title: 'History',
-      subtitle: 'Cylinder and consumable activity in one permanent timeline.',
-      child: entries.isEmpty
+      subtitle: 'Cylinder activity in one permanent timeline.',
+      child: events.isEmpty
           ? const _EmptyCard(
               icon: Icons.receipt_long_outlined,
               title: 'No history yet',
-              body: 'Cylinder and consumable actions will appear here.',
+              body: 'Cylinder actions will appear here.',
             )
           : Column(
-              children: entries
+              children: events
                   .map(
-                    (entry) => Padding(
+                    (event) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: entry.child,
+                      child: _EventCard(event: event, wallet: wallet),
                     ),
                   )
                   .toList(),
@@ -1996,12 +1042,10 @@ class _SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPro = wallet.entitlementCache.isProAt(DateTime.now().toUtc());
-    final needsFreeChoice =
-        !isPro &&
-        (wallet.cylinders.where((value) => value.consumesCurrentSlot).length >
-                freeEditableCylinderLimit ||
-            wallet.consumables.where((value) => value.isActive).length >
-                freeEditableConsumableLimit);
+    final currentCount = wallet.cylinders
+        .where((value) => value.consumesCurrentSlot)
+        .length;
+    final needsFreeChoice = !isPro && currentCount > freeEditableCylinderLimit;
     return _ScreenFrame(
       title: 'Settings',
       subtitle: 'Preferences, suppliers, privacy and plan controls.',
@@ -2032,15 +1076,15 @@ class _SettingsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          isPro ? 'Welding Wallet Pro' : 'Free plan',
+                          isPro ? 'Welding Gas Wallet Pro' : 'Free plan',
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(color: Colors.white),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           isPro
-                              ? 'No ads · Unlimited records'
-                              : 'Cylinder limit: 3 · Batch limit: 3 · Banner',
+                              ? 'No ads · Unlimited cylinders'
+                              : '3 current cylinders · Banner ad',
                           style: const TextStyle(color: Color(0xFFBFC9D7)),
                         ),
                       ],
@@ -2070,15 +1114,13 @@ class _SettingsScreen extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.notifications_outlined),
                 title: const Text('Reminders'),
-                subtitle: Text(
-                  '${wallet.reminders.where((value) => !value.completed).length} active',
-                ),
+                subtitle: Text('${wallet.reminders.length} saved'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: onReminders,
               ),
               SwitchListTile(
-                secondary: const Icon(Icons.notifications_outlined),
-                title: const Text('Device reminders'),
+                secondary: const Icon(Icons.notifications_active_outlined),
+                title: const Text('Device alerts'),
                 subtitle: const Text('Use local notifications for due dates'),
                 value: wallet.settings.remindersEnabled,
                 onChanged: onReminderToggle,
@@ -2086,8 +1128,8 @@ class _SettingsScreen extends StatelessWidget {
               if (needsFreeChoice)
                 ListTile(
                   leading: const Icon(Icons.checklist_outlined),
-                  title: const Text('Free records'),
-                  subtitle: const Text('Choose the three editable records'),
+                  title: const Text('Free cylinders'),
+                  subtitle: const Text('Choose the three editable cylinders'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: onFreeRecords,
                 ),
@@ -2374,12 +1416,12 @@ class _OnboardingScreenState extends State<_OnboardingScreen> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Gas and consumables. One welding wallet.',
+                  'Your welding gas cylinders. One simple wallet.',
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Welding Wallet keeps cylinder, consumable batch and certificate records on this device.',
+                  'Welding Gas Wallet keeps your cylinder records on this device.',
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 26),
@@ -2705,8 +1747,7 @@ Future<void> _restoreBackup(
     builder: (context) => AlertDialog(
       title: const Text('Restore backup?'),
       content: Text(
-        '${preview.cylinders.length} gas · '
-        '${preview.consumables.length} consumable · '
+        '${preview.cylinders.length} cylinder · '
         '${preview.reminders.length} reminder\n\n'
         'This replaces the wallet on this device.',
       ),
@@ -2734,7 +1775,7 @@ Future<void> _deleteWallet(
     builder: (context) => AlertDialog(
       title: const Text('Delete wallet?'),
       content: const Text(
-        'All local records, certificates and reminders will be removed.',
+        'All local cylinder records and reminders will be removed.',
       ),
       actions: [
         TextButton(
@@ -2751,12 +1792,6 @@ Future<void> _deleteWallet(
   if (confirmed == true) await controller.deleteAllData();
 }
 
-class _FreeSelection {
-  const _FreeSelection(this.cylinders, this.consumables);
-  final List<String> cylinders;
-  final List<String> consumables;
-}
-
 Future<void> _openFreeRecordPicker(
   BuildContext context,
   AppController controller,
@@ -2765,27 +1800,19 @@ Future<void> _openFreeRecordPicker(
   final cylinders = wallet.cylinders
       .where((value) => value.consumesCurrentSlot)
       .toList();
-  final consumables = wallet.consumables
-      .where((value) => value.isActive)
-      .toList();
-  final chosenCylinders = <String>{
+  final chosen = <String>{
     ...(wallet.freeEditableSelection.isEmpty
         ? cylinders.take(freeEditableCylinderLimit).map((value) => value.id)
         : wallet.freeEditableSelection),
   };
-  final chosenConsumables = <String>{
-    ...(wallet.freeEditableConsumableSelection.isEmpty
-        ? consumables.take(freeEditableConsumableLimit).map((value) => value.id)
-        : wallet.freeEditableConsumableSelection),
-  };
-  final selection = await showModalBottomSheet<_FreeSelection>(
+  final selection = await showModalBottomSheet<List<String>>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.88,
+        initialChildSize: 0.82,
         builder: (context, scrollController) => ListView(
           controller: scrollController,
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
@@ -2793,61 +1820,30 @@ Future<void> _openFreeRecordPicker(
             const Center(child: _Grabber()),
             const SizedBox(height: 18),
             const _SheetHeader(
-              title: 'Free records',
-              subtitle: 'Choose up to three in each group.',
+              title: 'Free cylinders',
+              subtitle: 'Choose up to three editable cylinders.',
             ),
-            if (cylinders.length > freeEditableCylinderLimit) ...[
-              const SizedBox(height: 20),
-              const _SectionLabel('GAS'),
-              ...cylinders.map(
-                (value) => CheckboxListTile(
-                  value: chosenCylinders.contains(value.id),
-                  title: Text(value.nickname),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (checked) {
-                    setState(() {
-                      if (checked == true &&
-                          chosenCylinders.length < freeEditableCylinderLimit) {
-                        chosenCylinders.add(value.id);
-                      } else if (checked != true) {
-                        chosenCylinders.remove(value.id);
-                      }
-                    });
-                  },
-                ),
+            const SizedBox(height: 16),
+            ...cylinders.map(
+              (value) => CheckboxListTile(
+                value: chosen.contains(value.id),
+                title: Text(value.nickname),
+                controlAffinity: ListTileControlAffinity.leading,
+                onChanged: (checked) {
+                  setState(() {
+                    if (checked == true &&
+                        chosen.length < freeEditableCylinderLimit) {
+                      chosen.add(value.id);
+                    } else if (checked != true) {
+                      chosen.remove(value.id);
+                    }
+                  });
+                },
               ),
-            ],
-            if (consumables.length > freeEditableConsumableLimit) ...[
-              const SizedBox(height: 20),
-              const _SectionLabel('CONSUMABLE'),
-              ...consumables.map(
-                (value) => CheckboxListTile(
-                  value: chosenConsumables.contains(value.id),
-                  title: Text('${value.productName} · ${value.batchLot}'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (checked) {
-                    setState(() {
-                      if (checked == true &&
-                          chosenConsumables.length <
-                              freeEditableConsumableLimit) {
-                        chosenConsumables.add(value.id);
-                      } else if (checked != true) {
-                        chosenConsumables.remove(value.id);
-                      }
-                    });
-                  },
-                ),
-              ),
-            ],
+            ),
             const SizedBox(height: 20),
             FilledButton(
-              onPressed: () => Navigator.pop(
-                context,
-                _FreeSelection(
-                  chosenCylinders.toList(),
-                  chosenConsumables.toList(),
-                ),
-              ),
+              onPressed: () => Navigator.pop(context, chosen.toList()),
               child: const Text('Save'),
             ),
           ],
@@ -2856,12 +1852,10 @@ Future<void> _openFreeRecordPicker(
     ),
   );
   if (selection == null) return;
-  await controller.run(() async {
-    await controller.engine.selectFreeEditable(selection.cylinders);
-    await controller.engine.selectFreeEditableConsumables(
-      selection.consumables,
-    );
-  }, success: 'Free records updated.');
+  await controller.run(
+    () => controller.engine.selectFreeEditable(selection),
+    success: 'Free cylinders updated.',
+  );
 }
 
 class _SupplierField extends StatelessWidget {
@@ -2989,13 +1983,9 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
       final duplicateCode =
           normalizedCode.isNotEmpty &&
           (widget.controller.wallet!.cylinders.any(
-                (value) =>
-                    value.serialNumber?.trim().toLowerCase() == normalizedCode,
-              ) ||
-              widget.controller.wallet!.consumables.any(
-                (value) =>
-                    value.primaryCode.trim().toLowerCase() == normalizedCode,
-              ));
+            (value) =>
+                value.serialNumber?.trim().toLowerCase() == normalizedCode,
+          ));
       final error = name.text.trim().isEmpty
           ? 'Enter a name.'
           : capacityText.isNotEmpty &&
@@ -3175,16 +2165,10 @@ class _RecordSheetState extends State<_RecordSheet> {
         if (!isRefill &&
             normalizedSerial.isNotEmpty &&
             (widget.wallet.cylinders.any(
-                  (value) =>
-                      value.id != widget.cylinder.id &&
-                      value.serialNumber?.trim().toLowerCase() ==
-                          normalizedSerial,
-                ) ||
-                widget.wallet.consumables.any(
-                  (value) =>
-                      value.primaryCode.trim().toLowerCase() ==
-                      normalizedSerial,
-                ))) {
+              (value) =>
+                  value.id != widget.cylinder.id &&
+                  value.serialNumber?.trim().toLowerCase() == normalizedSerial,
+            ))) {
           setState(() => formError = 'Serial already saved.');
           return;
         }
@@ -3774,7 +2758,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         const _FeatureLine(
           icon: Icons.all_inclusive,
           title: 'Unlimited records',
-          body: 'Add and edit every active cylinder and consumable batch.',
+          body: 'Add and edit every active cylinder.',
         ),
         const _FeatureLine(
           icon: Icons.block,

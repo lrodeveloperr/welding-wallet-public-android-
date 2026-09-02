@@ -99,7 +99,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Welding Wallet Dashboard'), findsOneWidget);
+    expect(find.text('Welding Gas Wallet'), findsOneWidget);
     expect(find.text('QUICK ACTIONS'), findsOneWidget);
     expect(find.text('SUMMARY & COUNTS'), findsOneWidget);
     await expectLater(
