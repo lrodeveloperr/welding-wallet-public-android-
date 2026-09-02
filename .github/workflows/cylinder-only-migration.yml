@@ -41,6 +41,20 @@ jobs:
           echo 'd222764baa23cc52e5c941648a89297a57e00f76d53dc62c15d01a31d83abfc2  /tmp/cylinder_only_v2.py' | sha256sum -c -
           python3 -m py_compile /tmp/cylinder_only_v2.py
 
+          # One baseline helper is top-level rather than class-indented. Patch
+          # that known marker after integrity verification, then syntax-check again.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/cylinder_only_v2.py')
+          source = path.read_text()
+          old = "end = s.index('  String? _clean(', start)"
+          new = "end = s.index('\\n}\\n\\nString? _clean(', start) + 1"
+          if source.count(old) != 1:
+              raise SystemExit('expected one validateImported end marker')
+          path.write_text(source.replace(old, new))
+          PY
+          python3 -m py_compile /tmp/cylinder_only_v2.py
+
           # Restore only the domain files from the last known cylinder-only
           # baseline. UI/controller stay on the current branch and are edited
           # surgically by the migration script to avoid visual regression.
