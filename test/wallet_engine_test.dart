@@ -317,9 +317,8 @@ void main() {
     }
     for (var index = 1; index <= 8; index++) {
       expect(
-        (await engine.addConsumableOrGate(
-          consumableDraft('LOT-PRO-$index'),
-        )).wasAdded,
+        (await engine.addConsumableOrGate(consumableDraft('LOT-PRO-$index')))
+            .wasAdded,
         isTrue,
       );
     }

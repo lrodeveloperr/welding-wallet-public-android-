@@ -278,17 +278,13 @@ class WalletEngine {
       throw const WalletRuleException('Choose Issue or Use.');
     }
     final usedQuantity = quantity;
-    if (usedQuantity == null ||
-        !usedQuantity.isFinite ||
-        usedQuantity <= 0) {
+    if (usedQuantity == null || !usedQuantity.isFinite || usedQuantity <= 0) {
       throw const WalletRuleException('Quantity must be greater than zero.');
     }
     await _requireEditableConsumable(consumableId);
     await repository.transact((current) {
       final consumable = _consumable(current, consumableId);
-      final remaining = consumable.remainingQuantity(
-        current.consumableEvents,
-      );
+      final remaining = consumable.remainingQuantity(current.consumableEvents);
       if (usedQuantity > remaining) {
         throw WalletRuleException(
           'Only ${_plainNumber(remaining)} ${consumable.quantityUnit} remains.',
@@ -442,9 +438,7 @@ class WalletEngine {
     if (!currentIds.containsAll(unique)) {
       throw const WalletRuleException('Only active batches can be selected.');
     }
-    return current.next(
-      freeEditableConsumableSelection: unique.toList(),
-    );
+    return current.next(freeEditableConsumableSelection: unique.toList());
   });
 
   Future<void> recordRefill(
@@ -697,8 +691,7 @@ class WalletEngine {
       pendingDraft: imported.pendingDraft,
       pendingConsumableDraft: imported.pendingConsumableDraft,
       freeEditableSelection: imported.freeEditableSelection,
-      freeEditableConsumableSelection:
-          imported.freeEditableConsumableSelection,
+      freeEditableConsumableSelection: imported.freeEditableConsumableSelection,
       entitlementCache: current.entitlementCache,
     );
     await repository.replace(safe);
@@ -714,9 +707,7 @@ class WalletEngine {
       if (raw is! Map ||
           raw['format'] != 'welding-wallet-backup' ||
           raw['wallet'] is! Map) {
-        throw const WalletRuleException(
-          'This is not a Welding Wallet backup.',
-        );
+        throw const WalletRuleException('This is not a Welding Wallet backup.');
       }
       final imported = WalletData.fromJson(
         Map<String, Object?>.from(raw['wallet'] as Map),
@@ -790,8 +781,7 @@ class WalletEngine {
           ),
           ...current.cylinders
               .where(
-                (value) =>
-                    value.id != cylinderId && value.consumesCurrentSlot,
+                (value) => value.id != cylinderId && value.consumesCurrentSlot,
               )
               .map((value) => value.id),
         }.take(freeEditableCylinderLimit).toList(),
@@ -956,7 +946,8 @@ class WalletEngine {
   }) {
     final normalized = candidate?.trim().toLowerCase() ?? '';
     if (normalized.isEmpty) return;
-    final duplicate = current.cylinders.any(
+    final duplicate =
+        current.cylinders.any(
           (value) =>
               value.id != excludingCylinderId &&
               value.serialNumber?.trim().toLowerCase() == normalized,
@@ -1078,10 +1069,10 @@ class WalletEngine {
 
 String _plainNumber(double value) => value == value.roundToDouble()
     ? value.toInt().toString()
-    : value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(
-        RegExp(r'\.$'),
-        '',
-      );
+    : value
+          .toStringAsFixed(2)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
 
 String? _clean(String? value) {
   final cleaned = value?.trim();

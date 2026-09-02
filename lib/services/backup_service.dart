@@ -9,7 +9,8 @@ import '../core/wallet_engine.dart';
 class BackupService {
   Future<bool> save(String encoded) async {
     final now = DateTime.now().toUtc();
-    final stamp = '${now.year.toString().padLeft(4, '0')}'
+    final stamp =
+        '${now.year.toString().padLeft(4, '0')}'
         '${now.month.toString().padLeft(2, '0')}'
         '${now.day.toString().padLeft(2, '0')}';
     final uri = await FilePicker.saveFile(
@@ -37,4 +38,3 @@ class BackupService {
     }
   }
 }
-

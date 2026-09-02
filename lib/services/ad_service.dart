@@ -17,10 +17,8 @@ class AdConfiguration {
     'WELDING_IOS_ADMOB_BANNER_ID',
   );
 
-  static const androidTestBanner =
-      'ca-app-pub-3940256099942544/9214589741';
-  static const iosTestBanner =
-      'ca-app-pub-3940256099942544/2435281174';
+  static const androidTestBanner = 'ca-app-pub-3940256099942544/9214589741';
+  static const iosTestBanner = 'ca-app-pub-3940256099942544/2435281174';
 
   String get bannerUnitId {
     if (!kReleaseMode) {
@@ -33,9 +31,8 @@ class AdConfiguration {
   }
 
   static bool isApprovedProductionBanner(String value) {
-    final match = RegExp(r'^ca-app-pub-(\d{16})/\d{10}$').firstMatch(
-      value.trim(),
-    );
+    final match = RegExp(r'^ca-app-pub-(\d{16})/\d{10}$')
+        .firstMatch(value.trim());
     return match != null &&
         match.group(1) == approvedAdMobPublisherId &&
         match.group(1) != googleDemoPublisherId;

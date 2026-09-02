@@ -314,10 +314,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
       return;
     }
-    final restored = await run(
-      billing.restore,
-      success: 'Purchases checked.',
-    );
+    final restored = await run(billing.restore, success: 'Purchases checked.');
     if (!restored) return;
   }
 

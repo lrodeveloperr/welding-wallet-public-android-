@@ -8,8 +8,7 @@ import '../core/models.dart';
 
 const String monthlyProductId = 'com.gooduse.weldinggaswallet.pro.monthly';
 const String annualProductId = 'com.gooduse.weldinggaswallet.pro.annual';
-const String iosLifetimeProductId =
-    'com.gooduse.weldinggaswallet.pro.lifetime';
+const String iosLifetimeProductId = 'com.gooduse.weldinggaswallet.pro.lifetime';
 
 class BillingService {
   BillingService({InAppPurchase? store}) : _storeOverride = store;

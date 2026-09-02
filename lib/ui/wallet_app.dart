@@ -799,12 +799,10 @@ class _ConsumablesScreenState extends State<_ConsumablesScreen> {
       var values = wallet.consumables.where((value) {
         return switch (filter) {
           _ConsumableFilter.active => value.isActive,
-          _ConsumableFilter.missing =>
-            value.isActive && !value.hasCertificate,
+          _ConsumableFilter.missing => value.isActive && !value.hasCertificate,
           _ConsumableFilter.archived => !value.isActive,
         };
-      }).toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       return _ScreenFrame(
         title: 'Consumables',
         subtitle:
@@ -867,9 +865,7 @@ class _ConsumablesScreenState extends State<_ConsumablesScreen> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _ConsumableCard(
                     consumable: value,
-                    remaining: value.remainingQuantity(
-                      wallet.consumableEvents,
-                    ),
+                    remaining: value.remainingQuantity(wallet.consumableEvents),
                     onTap: () =>
                         _openConsumable(context, widget.controller, value.id),
                   ),
@@ -976,10 +972,8 @@ Future<void> _openAddConsumable(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _AddConsumableSheet(
-      controller: controller,
-      scannedCode: scannedCode,
-    ),
+    builder: (_) =>
+        _AddConsumableSheet(controller: controller, scannedCode: scannedCode),
   );
   if (draft == null) return;
   final result = await controller.addConsumable(draft);
@@ -1031,7 +1025,8 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
         quantity.text.trim().replaceAll(',', '.'),
       );
       final normalizedCode = code.text.trim().toLowerCase();
-      final duplicateCode = normalizedCode.isNotEmpty &&
+      final duplicateCode =
+          normalizedCode.isNotEmpty &&
           (widget.controller.wallet!.cylinders.any(
                 (value) =>
                     value.serialNumber?.trim().toLowerCase() == normalizedCode,
@@ -1056,18 +1051,18 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
       Navigator.pop(
         context,
         AddConsumableDraft(
-        type: type,
-        productName: product.text,
-        batchLot: batch.text,
-        primaryCode: code.text,
-        classification: classification.text,
-        manufacturer: manufacturer.text,
-        supplierId: supplierId,
-        location: location.text,
-        receiptDate: DateTime.now(),
-        initialQuantity: parsedQuantity!,
-        quantityUnit: quantityUnit,
-      ),
+          type: type,
+          productName: product.text,
+          batchLot: batch.text,
+          primaryCode: code.text,
+          classification: classification.text,
+          manufacturer: manufacturer.text,
+          supplierId: supplierId,
+          location: location.text,
+          receiptDate: DateTime.now(),
+          initialQuantity: parsedQuantity!,
+          quantityUnit: quantityUnit,
+        ),
       );
     },
     children: [
@@ -1339,15 +1334,15 @@ class _ConsumableSheet extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: consumable.hasCertificate || consumable.isActive
                         ? () async {
-                      if (consumable.hasCertificate) {
-                        await controller.openCertificate(
-                          consumable.certificateLocalPath!,
-                        );
-                      } else {
-                        await controller.pickAndAttachCertificate(
-                          consumable.id,
-                        );
-                      }
+                            if (consumable.hasCertificate) {
+                              await controller.openCertificate(
+                                consumable.certificateLocalPath!,
+                              );
+                            } else {
+                              await controller.pickAndAttachCertificate(
+                                consumable.id,
+                              );
+                            }
                           }
                         : null,
                   ),
@@ -1359,46 +1354,46 @@ class _ConsumableSheet extends StatelessWidget {
               const _SectionLabel('ACTIONS'),
               const SizedBox(height: 10),
               Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _recordConsumableEvent(
-                    context,
-                    controller,
-                    consumable,
-                    ConsumableEventType.issued,
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _recordConsumableEvent(
+                      context,
+                      controller,
+                      consumable,
+                      ConsumableEventType.issued,
+                    ),
+                    icon: const Icon(Icons.outbox_outlined),
+                    label: const Text('Issue'),
                   ),
-                  icon: const Icon(Icons.outbox_outlined),
-                  label: const Text('Issue'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _recordConsumableEvent(
-                    context,
-                    controller,
-                    consumable,
-                    ConsumableEventType.used,
+                  OutlinedButton.icon(
+                    onPressed: () => _recordConsumableEvent(
+                      context,
+                      controller,
+                      consumable,
+                      ConsumableEventType.used,
+                    ),
+                    icon: const Icon(Icons.task_alt),
+                    label: const Text('Use'),
                   ),
-                  icon: const Icon(Icons.task_alt),
-                  label: const Text('Use'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      controller.pickAndAttachCertificate(consumable.id),
-                  icon: const Icon(Icons.attach_file),
-                  label: Text(
-                    consumable.hasCertificate
-                        ? 'Replace certificate'
-                        : 'Attach certificate',
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        controller.pickAndAttachCertificate(consumable.id),
+                    icon: const Icon(Icons.attach_file),
+                    label: Text(
+                      consumable.hasCertificate
+                          ? 'Replace certificate'
+                          : 'Attach certificate',
+                    ),
                   ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      _archiveConsumable(context, controller, consumable),
-                  icon: const Icon(Icons.archive_outlined),
-                  label: const Text('Archive'),
-                ),
-              ],
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        _archiveConsumable(context, controller, consumable),
+                    icon: const Icon(Icons.archive_outlined),
+                    label: const Text('Archive'),
+                  ),
+                ],
               ),
             ],
             const SizedBox(height: 24),
@@ -1497,59 +1492,61 @@ Future<void> _recordConsumableEvent(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
-      title: Text(
-        type == ConsumableEventType.issued ? 'Issue batch' : 'Record use',
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: quantity,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Quantity (${consumable.quantityUnit})',
-              errorText: validationError,
+        title: Text(
+          type == ConsumableEventType.issued ? 'Issue batch' : 'Record use',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: quantity,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                labelText: 'Quantity (${consumable.quantityUnit})',
+                errorText: validationError,
+              ),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reference,
+              decoration: const InputDecoration(
+                labelText: 'Job / reference (optional)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: reference,
-            decoration: const InputDecoration(
-              labelText: 'Job / reference (optional)',
-            ),
+          FilledButton(
+            onPressed: () {
+              final value = double.tryParse(
+                quantity.text.trim().replaceAll(',', '.'),
+              );
+              if (value == null || value <= 0) {
+                setDialogState(() => validationError = 'Check quantity.');
+                return;
+              }
+              final remaining = consumable.remainingQuantity(
+                controller.wallet!.consumableEvents,
+              );
+              if (value > remaining) {
+                setDialogState(
+                  () => validationError =
+                      'Only ${formatDecimal(remaining)} left.',
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save'),
           ),
         ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final value = double.tryParse(
-              quantity.text.trim().replaceAll(',', '.'),
-            );
-            if (value == null || value <= 0) {
-              setDialogState(() => validationError = 'Check quantity.');
-              return;
-            }
-            final remaining = consumable.remainingQuantity(
-              controller.wallet!.consumableEvents,
-            );
-            if (value > remaining) {
-              setDialogState(
-                () => validationError =
-                    'Only ${formatDecimal(remaining)} left.',
-              );
-              return;
-            }
-            Navigator.pop(context, true);
-          },
-          child: const Text('Save'),
-        ),
-      ],
       ),
     ),
   );
@@ -1999,7 +1996,8 @@ class _SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPro = wallet.entitlementCache.isProAt(DateTime.now().toUtc());
-    final needsFreeChoice = !isPro &&
+    final needsFreeChoice =
+        !isPro &&
         (wallet.cylinders.where((value) => value.consumesCurrentSlot).length >
                 freeEditableCylinderLimit ||
             wallet.consumables.where((value) => value.isActive).length >
@@ -2411,10 +2409,7 @@ class _OnboardingScreenState extends State<_OnboardingScreen> {
                           children: const [
                             _LegalButton(label: 'Privacy', path: 'privacy'),
                             _LegalButton(label: 'Terms', path: 'terms'),
-                            _LegalButton(
-                              label: 'Safety',
-                              path: 'disclaimer',
-                            ),
+                            _LegalButton(label: 'Safety', path: 'disclaimer'),
                           ],
                         ),
                         const Padding(
@@ -2514,10 +2509,8 @@ Future<void> _openAddCylinder(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _AddCylinderSheet(
-      controller: controller,
-      prefilledSerial: scannedCode,
-    ),
+    builder: (_) =>
+        _AddCylinderSheet(controller: controller, prefilledSerial: scannedCode),
   );
   if (draft == null) return;
   final result = await controller.addCylinder(draft);
@@ -2531,8 +2524,7 @@ Future<void> _openRecord(
   CylinderEventType type, {
   Cylinder? target,
 }) async {
-  final cylinder = target ??
-      await _chooseCylinder(context, controller.wallet!);
+  final cylinder = target ?? await _chooseCylinder(context, controller.wallet!);
   if (!context.mounted || cylinder == null) return;
   final result = await showModalBottomSheet<_RecordDraft>(
     context: context,
@@ -2575,8 +2567,7 @@ Future<void> _openReminder(
   AppController controller, {
   Cylinder? target,
 }) async {
-  final cylinder = target ??
-      await _chooseCylinder(context, controller.wallet!);
+  final cylinder = target ?? await _chooseCylinder(context, controller.wallet!);
   if (!context.mounted || cylinder == null) return;
   final draft = await showModalBottomSheet<_ReminderDraft>(
     context: context,
@@ -2784,9 +2775,7 @@ Future<void> _openFreeRecordPicker(
   };
   final chosenConsumables = <String>{
     ...(wallet.freeEditableConsumableSelection.isEmpty
-        ? consumables
-              .take(freeEditableConsumableLimit)
-              .map((value) => value.id)
+        ? consumables.take(freeEditableConsumableLimit).map((value) => value.id)
         : wallet.freeEditableConsumableSelection),
   };
   final selection = await showModalBottomSheet<_FreeSelection>(
@@ -2997,7 +2986,8 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
           ? null
           : double.tryParse(capacityText.replaceAll(',', '.'));
       final normalizedCode = serial.text.trim().toLowerCase();
-      final duplicateCode = normalizedCode.isNotEmpty &&
+      final duplicateCode =
+          normalizedCode.isNotEmpty &&
           (widget.controller.wallet!.cylinders.any(
                 (value) =>
                     value.serialNumber?.trim().toLowerCase() == normalizedCode,
@@ -3488,11 +3478,8 @@ class _CylinderSheet extends StatelessWidget {
                 ),
                 OutlinedButton.icon(
                   onPressed: cylinder.consumesCurrentSlot
-                      ? () => _openReminder(
-                          context,
-                          controller,
-                          target: cylinder,
-                        )
+                      ? () =>
+                            _openReminder(context, controller, target: cylinder)
                       : null,
                   icon: const Icon(Icons.add_alert),
                   label: const Text('Reminder'),
@@ -3681,48 +3668,49 @@ Future<void> _createSupplier(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
-      title: const Text('Add supplier'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: name,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'Name',
-              errorText: validationError,
+        title: const Text('Add supplier'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                errorText: validationError,
+              ),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: notes,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+          FilledButton(
+            onPressed: () {
+              final cleaned = name.text.trim();
+              final duplicate = controller.wallet!.suppliers.any(
+                (value) => value.name.toLowerCase() == cleaned.toLowerCase(),
+              );
+              if (cleaned.isEmpty || duplicate) {
+                setDialogState(
+                  () => validationError = cleaned.isEmpty
+                      ? 'Enter a name.'
+                      : 'Already saved.',
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            child: const Text('Add supplier'),
           ),
         ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final cleaned = name.text.trim();
-            final duplicate = controller.wallet!.suppliers.any(
-              (value) => value.name.toLowerCase() == cleaned.toLowerCase(),
-            );
-            if (cleaned.isEmpty || duplicate) {
-              setDialogState(
-                () => validationError =
-                    cleaned.isEmpty ? 'Enter a name.' : 'Already saved.',
-              );
-              return;
-            }
-            Navigator.pop(context, true);
-          },
-          child: const Text('Add supplier'),
-        ),
-      ],
       ),
     ),
   );
@@ -3779,9 +3767,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         ),
         const SizedBox(height: 8),
         Text(
-          Platform.isIOS
-              ? 'One purchase. Every record stays editable.'
-              : 'Unlimited while Pro is active. Saved history remains if Pro ends.',
+          Platform.isIOS ? 'One purchase. Every record stays editable.' : 'Unlimited while Pro is active. Saved history remains if Pro ends.',
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 20),
@@ -3831,8 +3817,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                       child: SizedBox(
                         width: double.infinity,
                         child: FilledButton(
-                          onPressed: () =>
-                              widget.controller.purchase(product),
+                          onPressed: () => widget.controller.purchase(product),
                           child: Text('${product.title} · ${product.price}'),
                         ),
                       ),

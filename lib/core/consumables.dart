@@ -162,11 +162,9 @@ class ConsumableBatch {
         ),
         createdAt: _date(json['createdAt']),
         updatedAt: _date(json['updatedAt']),
-        initialQuantity:
-            ((json['initialQuantity'] as num?)?.toDouble() ?? 1).clamp(
-              0.000001,
-              double.infinity,
-            ).toDouble(),
+        initialQuantity: ((json['initialQuantity'] as num?)?.toDouble() ?? 1)
+            .clamp(0.000001, double.infinity)
+            .toDouble(),
         quantityUnit: json['quantityUnit']?.toString().trim().isNotEmpty == true
             ? json['quantityUnit']!.toString().trim()
             : 'pack',
@@ -286,8 +284,7 @@ class AddConsumableDraft {
         receiptDate: json['receiptDate'] == null
             ? null
             : _date(json['receiptDate']),
-        initialQuantity:
-            (json['initialQuantity'] as num?)?.toDouble() ?? 1,
+        initialQuantity: (json['initialQuantity'] as num?)?.toDouble() ?? 1,
         quantityUnit: json['quantityUnit']?.toString() ?? 'pack',
       );
 }
