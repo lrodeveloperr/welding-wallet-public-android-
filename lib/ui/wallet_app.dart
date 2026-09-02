@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -8,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app_controller.dart';
 import '../core/models.dart';
+import '../services/ad_service.dart';
 import 'theme.dart';
 
 class WeldingWalletApp extends StatefulWidget {
@@ -59,15 +64,19 @@ class _WeldingWalletAppState extends State<WeldingWalletApp> {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: _WalletRoot(controller: widget.controller),
+        home: _WalletRoot(
+          controller: widget.controller,
+          enableAds: widget.autoInitialize,
+        ),
       );
     },
   );
 }
 
 class _WalletRoot extends StatelessWidget {
-  const _WalletRoot({required this.controller});
+  const _WalletRoot({required this.controller, required this.enableAds});
   final AppController controller;
+  final bool enableAds;
 
   @override
   Widget build(BuildContext context) {
@@ -91,14 +100,23 @@ class _WalletRoot extends StatelessWidget {
         ),
       );
     }
-    return _WalletShell(controller: controller, wallet: wallet);
+    return _WalletShell(
+      controller: controller,
+      wallet: wallet,
+      enableAds: enableAds,
+    );
   }
 }
 
 class _WalletShell extends StatelessWidget {
-  const _WalletShell({required this.controller, required this.wallet});
+  const _WalletShell({
+    required this.controller,
+    required this.wallet,
+    required this.enableAds,
+  });
   final AppController controller;
   final WalletData wallet;
+  final bool enableAds;
 
   @override
   Widget build(BuildContext context) {
@@ -126,8 +144,21 @@ class _WalletShell extends StatelessWidget {
         onCurrency: (value) => controller.run(
           () => controller.engine.updateSettings(currencyCode: value),
         ),
+        onMassUnit: (value) => controller.run(
+          () => controller.engine.updateSettings(defaultMassUnit: value),
+        ),
+        onVolumeUnit: (value) => controller.run(
+          () => controller.engine.updateSettings(defaultVolumeUnit: value),
+        ),
+        onBackup: controller.exportBackup,
+        onRestore: () => _restoreBackup(context, controller),
+        onDelete: () => _deleteWallet(context, controller),
+        onFreeRecords: () => _openFreeRecordPicker(context, controller),
+        privacyOptionsRequired: controller.ads.privacyOptionsRequired,
+        onPrivacyOptions: controller.showAdPrivacyOptions,
       ),
     ];
+    final isPro = wallet.entitlementCache.isProAt(DateTime.now().toUtc());
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -145,31 +176,125 @@ class _WalletShell extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: controller.tabIndex,
-        onDestinationSelected: controller.selectTab,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.propane_tank_outlined),
-            selectedIcon: Icon(Icons.propane_tank),
-            label: 'Gas',
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          NavigationBar(
+            selectedIndex: controller.tabIndex,
+            onDestinationSelected: controller.selectTab,
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.propane_tank_outlined),
+                selectedIcon: Icon(Icons.propane_tank),
+                label: 'Gas',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.inventory_2_outlined),
+                selectedIcon: Icon(Icons.inventory_2),
+                label: 'Consumables',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined),
+                selectedIcon: Icon(Icons.receipt_long),
+                label: 'History',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: 'Settings',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2),
-            label: 'Consumables',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'History',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
+          if (enableAds && !isPro) _FreeBanner(service: controller.ads),
         ],
+      ),
+    );
+  }
+}
+
+class _FreeBanner extends StatefulWidget {
+  const _FreeBanner({required this.service});
+
+  final AdService service;
+
+  @override
+  State<_FreeBanner> createState() => _FreeBannerState();
+}
+
+class _FreeBannerState extends State<_FreeBanner> {
+  BannerAd? _banner;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.service.addListener(_sync);
+    unawaited(widget.service.initialize());
+    _sync();
+  }
+
+  void _sync() {
+    if (!mounted) return;
+    if (!widget.service.canLoadAds) {
+      _banner?.dispose();
+      _banner = null;
+      if (_loaded) setState(() => _loaded = false);
+      return;
+    }
+    if (_banner != null) return;
+
+    final banner = BannerAd(
+      adUnitId: widget.service.bannerUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(nonPersonalizedAds: true),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          if (!mounted) {
+            ad.dispose();
+            return;
+          }
+          setState(() => _loaded = true);
+        },
+        onAdFailedToLoad: (ad, _) {
+          ad.dispose();
+          if (!mounted) return;
+          setState(() {
+            _banner = null;
+            _loaded = false;
+          });
+        },
+      ),
+    );
+    _banner = banner;
+    banner.load();
+  }
+
+  @override
+  void dispose() {
+    widget.service.removeListener(_sync);
+    _banner?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final banner = _banner;
+    if (!_loaded || banner == null) return const SizedBox.shrink();
+    return Semantics(
+      label: 'Advertisement',
+      child: Container(
+        height: 51,
+        width: double.infinity,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: WalletColors.border)),
+        ),
+        child: SizedBox(
+          width: banner.size.width.toDouble(),
+          height: banner.size.height.toDouble(),
+          child: AdWidget(ad: banner),
+        ),
       ),
     );
   }
@@ -196,6 +321,9 @@ class _DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final current = wallet.cylinders
         .where((value) => value.consumesCurrentSlot)
+        .toList();
+    final past = wallet.cylinders
+        .where((value) => !value.consumesCurrentSlot)
         .toList();
     final consumables = wallet.consumables
         .where((value) => value.isActive)
@@ -290,14 +418,14 @@ class _DashboardScreen extends StatelessWidget {
                     _SummaryCard(
                       label: 'GAS',
                       value: '${current.length}',
-                      detail: current.length == 1 ? 'cylinder' : 'cylinders',
+                      detail: 'gas record',
                       icon: Icons.propane_tank_outlined,
                       color: WalletColors.blue,
                     ),
                     _SummaryCard(
                       label: 'CONSUMABLES',
                       value: '${consumables.length}',
-                      detail: consumables.length == 1 ? 'batch' : 'batches',
+                      detail: 'batch',
                       icon: Icons.inventory_2_outlined,
                       color: WalletColors.amber,
                     ),
@@ -371,6 +499,29 @@ class _DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (past.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    const Expanded(child: _SectionLabel('PAST')),
+                    Text(
+                      '${past.length} saved',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ...past.map(
+                  (cylinder) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _CylinderCard(
+                      cylinder: cylinder,
+                      wallet: wallet,
+                      onTap: () => onCylinder(cylinder),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -472,7 +623,7 @@ class _SummaryCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: color,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.8,
                   ),
@@ -602,7 +753,7 @@ class _StatusPill extends StatelessWidget {
         label,
         style: TextStyle(
           color: color,
-          fontSize: 9,
+          fontSize: 12,
           fontWeight: FontWeight.w900,
           letterSpacing: 0.4,
         ),
@@ -635,19 +786,25 @@ class _ConsumablesScreen extends StatefulWidget {
   State<_ConsumablesScreen> createState() => _ConsumablesScreenState();
 }
 
+enum _ConsumableFilter { active, missing, archived }
+
 class _ConsumablesScreenState extends State<_ConsumablesScreen> {
-  bool missingOnly = false;
+  _ConsumableFilter filter = _ConsumableFilter.active;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.controller,
     builder: (context, _) {
       final wallet = widget.controller.wallet!;
-      var values = wallet.consumables.where((value) => value.isActive).toList()
+      var values = wallet.consumables.where((value) {
+        return switch (filter) {
+          _ConsumableFilter.active => value.isActive,
+          _ConsumableFilter.missing =>
+            value.isActive && !value.hasCertificate,
+          _ConsumableFilter.archived => !value.isActive,
+        };
+      }).toList()
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      if (missingOnly) {
-        values = values.where((value) => !value.hasCertificate).toList();
-      }
       return _ScreenFrame(
         title: 'Consumables',
         subtitle:
@@ -665,13 +822,21 @@ class _ConsumablesScreenState extends State<_ConsumablesScreen> {
               children: [
                 FilterChip(
                   label: const Text('All'),
-                  selected: !missingOnly,
-                  onSelected: (_) => setState(() => missingOnly = false),
+                  selected: filter == _ConsumableFilter.active,
+                  onSelected: (_) =>
+                      setState(() => filter = _ConsumableFilter.active),
                 ),
                 FilterChip(
-                  label: const Text('Missing certificates'),
-                  selected: missingOnly,
-                  onSelected: (_) => setState(() => missingOnly = true),
+                  label: const Text('Missing'),
+                  selected: filter == _ConsumableFilter.missing,
+                  onSelected: (_) =>
+                      setState(() => filter = _ConsumableFilter.missing),
+                ),
+                FilterChip(
+                  label: const Text('Archived'),
+                  selected: filter == _ConsumableFilter.archived,
+                  onSelected: (_) =>
+                      setState(() => filter = _ConsumableFilter.archived),
                 ),
               ],
             ),
@@ -679,16 +844,22 @@ class _ConsumablesScreenState extends State<_ConsumablesScreen> {
             if (values.isEmpty)
               _EmptyCard(
                 icon: Icons.inventory_2_outlined,
-                title: missingOnly
+                title: filter == _ConsumableFilter.missing
                     ? 'No missing certificates'
+                    : filter == _ConsumableFilter.archived
+                    ? 'No archived batch'
                     : 'No consumables yet',
-                body: missingOnly
-                    ? 'Every active consumable batch has a certificate attached.'
-                    : 'Add a wire, electrode, rod or flux batch. Scan first when a package has a barcode or QR code.',
-                action: missingOnly ? null : 'Add consumable',
-                onAction: missingOnly
-                    ? null
-                    : () => _openAddConsumable(context, widget.controller),
+                body: filter == _ConsumableFilter.missing
+                    ? 'Every active batch has a certificate.'
+                    : filter == _ConsumableFilter.archived
+                    ? 'Archived batch appears here.'
+                    : 'Add a wire, electrode, rod or flux batch.',
+                action: filter == _ConsumableFilter.active
+                    ? 'Add consumable'
+                    : null,
+                onAction: filter == _ConsumableFilter.active
+                    ? () => _openAddConsumable(context, widget.controller)
+                    : null,
               )
             else
               ...values.map(
@@ -696,6 +867,9 @@ class _ConsumablesScreenState extends State<_ConsumablesScreen> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _ConsumableCard(
                     consumable: value,
+                    remaining: value.remainingQuantity(
+                      wallet.consumableEvents,
+                    ),
                     onTap: () =>
                         _openConsumable(context, widget.controller, value.id),
                   ),
@@ -709,8 +883,13 @@ class _ConsumablesScreenState extends State<_ConsumablesScreen> {
 }
 
 class _ConsumableCard extends StatelessWidget {
-  const _ConsumableCard({required this.consumable, required this.onTap});
+  const _ConsumableCard({
+    required this.consumable,
+    required this.remaining,
+    required this.onTap,
+  });
   final ConsumableBatch consumable;
+  final double remaining;
   final VoidCallback onTap;
 
   @override
@@ -751,6 +930,7 @@ class _ConsumableCard extends StatelessWidget {
                         consumable.classification!,
                       if (consumable.manufacturer != null)
                         consumable.manufacturer!,
+                      '${formatDecimal(remaining)} ${consumable.quantityUnit} left',
                     ].join(' · '),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -774,7 +954,7 @@ class _ConsumableCard extends StatelessWidget {
                   color: consumable.hasCertificate
                       ? WalletColors.green
                       : WalletColors.amber,
-                  fontSize: 9,
+                  fontSize: 12,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -797,7 +977,7 @@ Future<void> _openAddConsumable(
     isScrollControlled: true,
     useSafeArea: true,
     builder: (_) => _AddConsumableSheet(
-      wallet: controller.wallet!,
+      controller: controller,
       scannedCode: scannedCode,
     ),
   );
@@ -808,8 +988,8 @@ Future<void> _openAddConsumable(
 }
 
 class _AddConsumableSheet extends StatefulWidget {
-  const _AddConsumableSheet({required this.wallet, this.scannedCode});
-  final WalletData wallet;
+  const _AddConsumableSheet({required this.controller, this.scannedCode});
+  final AppController controller;
   final String? scannedCode;
 
   @override
@@ -823,8 +1003,11 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
   final classification = TextEditingController();
   final manufacturer = TextEditingController();
   final location = TextEditingController();
+  final quantity = TextEditingController(text: '1');
   ConsumableType type = ConsumableType.wire;
   String? supplierId;
+  String quantityUnit = 'pack';
+  String? formError;
 
   @override
   void dispose() {
@@ -834,6 +1017,7 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
     classification.dispose();
     manufacturer.dispose();
     location.dispose();
+    quantity.dispose();
     super.dispose();
   }
 
@@ -842,9 +1026,36 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
     title: 'Add consumable',
     subtitle: 'Product + batch/lot is enough. Everything else is optional.',
     action: 'Save batch',
-    onAction: () => Navigator.pop(
-      context,
-      AddConsumableDraft(
+    onAction: () {
+      final parsedQuantity = double.tryParse(
+        quantity.text.trim().replaceAll(',', '.'),
+      );
+      final normalizedCode = code.text.trim().toLowerCase();
+      final duplicateCode = normalizedCode.isNotEmpty &&
+          (widget.controller.wallet!.cylinders.any(
+                (value) =>
+                    value.serialNumber?.trim().toLowerCase() == normalizedCode,
+              ) ||
+              widget.controller.wallet!.consumables.any(
+                (value) =>
+                    value.primaryCode.trim().toLowerCase() == normalizedCode,
+              ));
+      final error = product.text.trim().isEmpty
+          ? 'Enter a product.'
+          : batch.text.trim().isEmpty
+          ? 'Enter a batch or lot.'
+          : parsedQuantity == null || parsedQuantity <= 0
+          ? 'Check quantity.'
+          : duplicateCode
+          ? 'Code already saved.'
+          : null;
+      if (error != null) {
+        setState(() => formError = error);
+        return;
+      }
+      Navigator.pop(
+        context,
+        AddConsumableDraft(
         type: type,
         productName: product.text,
         batchLot: batch.text,
@@ -854,9 +1065,16 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
         supplierId: supplierId,
         location: location.text,
         receiptDate: DateTime.now(),
+        initialQuantity: parsedQuantity!,
+        quantityUnit: quantityUnit,
       ),
-    ),
+      );
+    },
     children: [
+      if (formError != null) ...[
+        _InlineError(formError!),
+        const SizedBox(height: 12),
+      ],
       DropdownButtonFormField<ConsumableType>(
         initialValue: type,
         decoration: const InputDecoration(labelText: 'Type'),
@@ -876,8 +1094,8 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
         autofocus: true,
         textInputAction: TextInputAction.next,
         decoration: const InputDecoration(
-          labelText: 'Product / classification',
-          hintText: 'ER70S-6',
+          labelText: 'Product',
+          hintText: 'ER70S-6 wire',
         ),
       ),
       const SizedBox(height: 14),
@@ -885,6 +1103,35 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
         controller: batch,
         textInputAction: TextInputAction.next,
         decoration: const InputDecoration(labelText: 'Batch / lot'),
+      ),
+      const SizedBox(height: 14),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: quantity,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: 'Quantity'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: quantityUnit,
+              decoration: const InputDecoration(labelText: 'Unit'),
+              items: const ['pack', 'spool', 'kg', 'lb', 'item']
+                  .map(
+                    (value) =>
+                        DropdownMenuItem(value: value, child: Text(value)),
+                  )
+                  .toList(),
+              onChanged: (value) =>
+                  setState(() => quantityUnit = value ?? quantityUnit),
+            ),
+          ),
+        ],
       ),
       const SizedBox(height: 14),
       TextField(
@@ -918,25 +1165,21 @@ class _AddConsumableSheetState extends State<_AddConsumableSheet> {
             controller: location,
             decoration: const InputDecoration(labelText: 'Location (optional)'),
           ),
-          if (widget.wallet.suppliers.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String?>(
-              initialValue: supplierId,
-              decoration: const InputDecoration(
-                labelText: 'Supplier (optional)',
-              ),
-              items: <DropdownMenuItem<String?>>[
-                const DropdownMenuItem(value: null, child: Text('No supplier')),
-                ...widget.wallet.suppliers.map(
-                  (value) => DropdownMenuItem(
-                    value: value.id,
-                    child: Text(value.name),
-                  ),
-                ),
-              ],
-              onChanged: (value) => setState(() => supplierId = value),
-            ),
-          ],
+          const SizedBox(height: 12),
+          _SupplierField(
+            suppliers: widget.controller.wallet!.suppliers,
+            supplierId: supplierId,
+            onChanged: (value) => setState(() => supplierId = value),
+            onAdd: () async {
+              final supplier = await _quickCreateSupplier(
+                context,
+                widget.controller,
+              );
+              if (mounted && supplier != null) {
+                setState(() => supplierId = supplier.id);
+              }
+            },
+          ),
         ],
       ),
     ],
@@ -979,6 +1222,7 @@ class _ConsumableSheet extends StatelessWidget {
               .where((value) => value.consumableId == consumableId)
               .toList()
             ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+      final remaining = consumable.remainingQuantity(events);
       return DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.92,
@@ -1016,6 +1260,26 @@ class _ConsumableSheet extends StatelessWidget {
                         '${consumableTypeLabel(consumable.type)} · Batch ${consumable.batchLot}',
                       ),
                     ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniStat(
+                    label: 'RECEIVED',
+                    value:
+                        '${formatDecimal(consumable.initialQuantity)} ${consumable.quantityUnit}',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _MiniStat(
+                    label: 'LEFT',
+                    value:
+                        '${formatDecimal(remaining)} ${consumable.quantityUnit}',
                   ),
                 ),
               ],
@@ -1073,7 +1337,8 @@ class _ConsumableSheet extends StatelessWidget {
                         ? null
                         : Text(consumable.certificateOriginalName!),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
+                    onTap: consumable.hasCertificate || consumable.isActive
+                        ? () async {
                       if (consumable.hasCertificate) {
                         await controller.openCertificate(
                           consumable.certificateLocalPath!,
@@ -1083,15 +1348,17 @@ class _ConsumableSheet extends StatelessWidget {
                           consumable.id,
                         );
                       }
-                    },
+                          }
+                        : null,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            const _SectionLabel('ACTIONS'),
-            const SizedBox(height: 10),
-            Wrap(
+            if (consumable.isActive) ...[
+              const SizedBox(height: 20),
+              const _SectionLabel('ACTIONS'),
+              const SizedBox(height: 10),
+              Wrap(
               spacing: 10,
               runSpacing: 10,
               children: [
@@ -1126,15 +1393,14 @@ class _ConsumableSheet extends StatelessWidget {
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => controller.run(
-                    () => controller.engine.archiveConsumable(consumable.id),
-                    success: 'Consumable batch archived.',
-                  ),
+                  onPressed: () =>
+                      _archiveConsumable(context, controller, consumable),
                   icon: const Icon(Icons.archive_outlined),
                   label: const Text('Archive'),
                 ),
               ],
-            ),
+              ),
+            ],
             const SizedBox(height: 24),
             const _SectionLabel('HISTORY'),
             const SizedBox(height: 10),
@@ -1188,6 +1454,36 @@ class _ConsumableEventCard extends StatelessWidget {
   );
 }
 
+Future<void> _archiveConsumable(
+  BuildContext context,
+  AppController controller,
+  ConsumableBatch consumable,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Archive batch?'),
+      content: const Text('History stays available under Archived.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Archive'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true) {
+    await controller.run(
+      () => controller.engine.archiveConsumable(consumable.id),
+      success: 'Batch archived.',
+    );
+  }
+}
+
 Future<void> _recordConsumableEvent(
   BuildContext context,
   AppController controller,
@@ -1196,9 +1492,11 @@ Future<void> _recordConsumableEvent(
 ) async {
   final quantity = TextEditingController();
   final reference = TextEditingController();
+  String? validationError;
   final submitted = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
       title: Text(
         type == ConsumableEventType.issued ? 'Issue batch' : 'Record use',
       ),
@@ -1209,7 +1507,10 @@ Future<void> _recordConsumableEvent(
             controller: quantity,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Quantity (optional)'),
+            decoration: InputDecoration(
+              labelText: 'Quantity (${consumable.quantityUnit})',
+              errorText: validationError,
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -1226,10 +1527,30 @@ Future<void> _recordConsumableEvent(
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, true),
+          onPressed: () {
+            final value = double.tryParse(
+              quantity.text.trim().replaceAll(',', '.'),
+            );
+            if (value == null || value <= 0) {
+              setDialogState(() => validationError = 'Check quantity.');
+              return;
+            }
+            final remaining = consumable.remainingQuantity(
+              controller.wallet!.consumableEvents,
+            );
+            if (value > remaining) {
+              setDialogState(
+                () => validationError =
+                    'Only ${formatDecimal(remaining)} left.',
+              );
+              return;
+            }
+            Navigator.pop(context, true);
+          },
           child: const Text('Save'),
         ),
       ],
+      ),
     ),
   );
   if (submitted == true) {
@@ -1457,6 +1778,8 @@ class _ActivityScreen extends StatelessWidget {
                   lifecycle: ConsumableLifecycle.archived,
                   createdAt: event.occurredAt,
                   updatedAt: event.occurredAt,
+                  initialQuantity: 1,
+                  quantityUnit: 'pack',
                 ),
             wallet: wallet,
           ),
@@ -1648,6 +1971,14 @@ class _SettingsScreen extends StatelessWidget {
     required this.onReminderToggle,
     required this.onLocale,
     required this.onCurrency,
+    required this.onMassUnit,
+    required this.onVolumeUnit,
+    required this.onBackup,
+    required this.onRestore,
+    required this.onDelete,
+    required this.onFreeRecords,
+    required this.privacyOptionsRequired,
+    required this.onPrivacyOptions,
   });
   final WalletData wallet;
   final VoidCallback onSuppliers;
@@ -1656,10 +1987,23 @@ class _SettingsScreen extends StatelessWidget {
   final ValueChanged<bool> onReminderToggle;
   final ValueChanged<String> onLocale;
   final ValueChanged<String> onCurrency;
+  final ValueChanged<String> onMassUnit;
+  final ValueChanged<String> onVolumeUnit;
+  final Future<bool> Function() onBackup;
+  final VoidCallback onRestore;
+  final VoidCallback onDelete;
+  final VoidCallback onFreeRecords;
+  final bool privacyOptionsRequired;
+  final VoidCallback onPrivacyOptions;
 
   @override
   Widget build(BuildContext context) {
     final isPro = wallet.entitlementCache.isProAt(DateTime.now().toUtc());
+    final needsFreeChoice = !isPro &&
+        (wallet.cylinders.where((value) => value.consumesCurrentSlot).length >
+                freeEditableCylinderLimit ||
+            wallet.consumables.where((value) => value.isActive).length >
+                freeEditableConsumableLimit);
     return _ScreenFrame(
       title: 'Settings',
       subtitle: 'Preferences, suppliers, privacy and plan controls.',
@@ -1697,8 +2041,8 @@ class _SettingsScreen extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           isPro
-                              ? 'All cylinders and consumable batches are editable.'
-                              : 'Up to three current cylinders and three active consumable batches.',
+                              ? 'No ads · Unlimited records'
+                              : 'Cylinder limit: 3 · Batch limit: 3 · Banner',
                           style: const TextStyle(color: Color(0xFFBFC9D7)),
                         ),
                       ],
@@ -1741,6 +2085,14 @@ class _SettingsScreen extends StatelessWidget {
                 value: wallet.settings.remindersEnabled,
                 onChanged: onReminderToggle,
               ),
+              if (needsFreeChoice)
+                ListTile(
+                  leading: const Icon(Icons.checklist_outlined),
+                  title: const Text('Free records'),
+                  subtitle: const Text('Choose the three editable records'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onFreeRecords,
+                ),
             ],
           ),
           const SizedBox(height: 24),
@@ -1805,6 +2157,71 @@ class _SettingsScreen extends StatelessWidget {
                   },
                 ),
               ),
+              ListTile(
+                leading: const Icon(Icons.scale_outlined),
+                title: const Text('Mass'),
+                trailing: DropdownButton<String>(
+                  value: wallet.settings.defaultMassUnit,
+                  underline: const SizedBox.shrink(),
+                  items: const ['kg', 'lb']
+                      .map(
+                        (value) =>
+                            DropdownMenuItem(value: value, child: Text(value)),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) onMassUnit(value);
+                  },
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.straighten_outlined),
+                title: const Text('Volume'),
+                trailing: DropdownButton<String>(
+                  value: wallet.settings.defaultVolumeUnit,
+                  underline: const SizedBox.shrink(),
+                  items: const ['L', 'm3', 'ft3']
+                      .map(
+                        (value) =>
+                            DropdownMenuItem(value: value, child: Text(value)),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) onVolumeUnit(value);
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const _SectionLabel('BACKUP'),
+          const SizedBox(height: 10),
+          _SettingsCard(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.backup_outlined),
+                title: const Text('Backup'),
+                subtitle: Text(
+                  Platform.isIOS
+                      ? 'Files or iCloud Drive'
+                      : 'Files or Google Drive',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onBackup,
+              ),
+              ListTile(
+                leading: const Icon(Icons.restore_outlined),
+                title: const Text('Restore'),
+                subtitle: const Text('Preview before replacing this wallet'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onRestore,
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_forever_outlined),
+                title: const Text('Delete wallet'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onDelete,
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -1812,11 +2229,17 @@ class _SettingsScreen extends StatelessWidget {
           const SizedBox(height: 10),
           _SettingsCard(
             children: [
+              if (privacyOptionsRequired)
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Privacy choices'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onPrivacyOptions,
+                ),
               _LinkTile(label: 'Privacy policy', path: 'privacy'),
               _LinkTile(label: 'Terms of use', path: 'terms'),
               _LinkTile(label: 'Safety disclaimer', path: 'disclaimer'),
               _LinkTile(label: 'Support', path: 'support'),
-              _LinkTile(label: 'Data deletion', path: 'deletion'),
             ],
           ),
         ],
@@ -1924,9 +2347,7 @@ class _OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<_OnboardingScreen> {
-  bool privacy = false;
-  bool terms = false;
-  bool safety = false;
+  bool accepted = false;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -1985,26 +2406,31 @@ class _OnboardingScreenState extends State<_OnboardingScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Column(
                       children: [
-                        CheckboxListTile(
-                          value: privacy,
-                          onChanged: (value) =>
-                              setState(() => privacy = value ?? false),
-                          title: const Text('I have read the privacy policy.'),
-                          controlAffinity: ListTileControlAffinity.leading,
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          children: const [
+                            _LegalButton(label: 'Privacy', path: 'privacy'),
+                            _LegalButton(label: 'Terms', path: 'terms'),
+                            _LegalButton(
+                              label: 'Safety',
+                              path: 'disclaimer',
+                            ),
+                          ],
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'Free includes one non-personalized banner. Pro removes ads.',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                         CheckboxListTile(
-                          value: terms,
+                          value: accepted,
                           onChanged: (value) =>
-                              setState(() => terms = value ?? false),
-                          title: const Text('I agree to the terms of use.'),
-                          controlAffinity: ListTileControlAffinity.leading,
-                        ),
-                        CheckboxListTile(
-                          value: safety,
-                          onChanged: (value) =>
-                              setState(() => safety = value ?? false),
-                          title: const Text(
-                            'I understand this app is a record wallet, not a welding or cylinder safety/compliance system.',
+                              setState(() => accepted = value ?? false),
+                          title: const Text('I accept'),
+                          subtitle: const Text(
+                            'Record wallet only—not safety or compliance advice.',
                           ),
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
@@ -2016,10 +2442,8 @@ class _OnboardingScreenState extends State<_OnboardingScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: privacy && terms && safety
-                        ? widget.onContinue
-                        : null,
-                    child: const Text('Create my wallet'),
+                    onPressed: accepted ? widget.onContinue : null,
+                    child: const Text('Continue'),
                   ),
                 ),
               ],
@@ -2028,6 +2452,23 @@ class _OnboardingScreenState extends State<_OnboardingScreen> {
         ),
       ),
     ),
+  );
+}
+
+class _LegalButton extends StatelessWidget {
+  const _LegalButton({required this.label, required this.path});
+  final String label;
+  final String path;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: () => launchUrl(
+      Uri.parse(
+        'https://lrodeveloperr.github.io/privacy-policy/welding-gas-wallet/$path/',
+      ),
+      mode: LaunchMode.externalApplication,
+    ),
+    child: Text(label),
   );
 }
 
@@ -2069,13 +2510,14 @@ Future<void> _openAddCylinder(
   AppController controller, {
   String? scannedCode,
 }) async {
-  final wallet = controller.wallet!;
   final draft = await showModalBottomSheet<AddCylinderDraft>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) =>
-        _AddCylinderSheet(wallet: wallet, prefilledSerial: scannedCode),
+    builder: (_) => _AddCylinderSheet(
+      controller: controller,
+      prefilledSerial: scannedCode,
+    ),
   );
   if (draft == null) return;
   final result = await controller.addCylinder(draft);
@@ -2086,9 +2528,11 @@ Future<void> _openAddCylinder(
 Future<void> _openRecord(
   BuildContext context,
   AppController controller,
-  CylinderEventType type,
-) async {
-  final cylinder = await _chooseCylinder(context, controller.wallet!);
+  CylinderEventType type, {
+  Cylinder? target,
+}) async {
+  final cylinder = target ??
+      await _chooseCylinder(context, controller.wallet!);
   if (!context.mounted || cylinder == null) return;
   final result = await showModalBottomSheet<_RecordDraft>(
     context: context,
@@ -2115,6 +2559,7 @@ Future<void> _openRecord(
           cylinder.id,
           amount: result.amount,
           supplierId: result.supplierId,
+          newSerialNumber: result.serialNumber,
           note: result.note,
         );
       }
@@ -2127,9 +2572,11 @@ Future<void> _openRecord(
 
 Future<void> _openReminder(
   BuildContext context,
-  AppController controller,
-) async {
-  final cylinder = await _chooseCylinder(context, controller.wallet!);
+  AppController controller, {
+  Cylinder? target,
+}) async {
+  final cylinder = target ??
+      await _chooseCylinder(context, controller.wallet!);
   if (!context.mounted || cylinder == null) return;
   final draft = await showModalBottomSheet<_ReminderDraft>(
     context: context,
@@ -2216,7 +2663,7 @@ Future<void> _openReminders(
               wallet: controller.wallet!,
               onAdd: () => _openReminder(context, controller),
               onComplete: (id) => controller.run(
-                () => controller.engine.completeReminder(id),
+                () => controller.completeReminder(id),
                 success: 'Reminder completed.',
               ),
               onDelete: (id) => controller.run(
@@ -2255,9 +2702,267 @@ Future<void> _openPaywall(
   );
 }
 
+Future<void> _restoreBackup(
+  BuildContext context,
+  AppController controller,
+) async {
+  final backup = await controller.chooseBackup();
+  if (!context.mounted || backup == null) return;
+  final preview = backup.preview;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Restore backup?'),
+      content: Text(
+        '${preview.cylinders.length} gas · '
+        '${preview.consumables.length} consumable · '
+        '${preview.reminders.length} reminder\n\n'
+        'This replaces the wallet on this device.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Restore'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true) await controller.restoreBackup(backup);
+}
+
+Future<void> _deleteWallet(
+  BuildContext context,
+  AppController controller,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Delete wallet?'),
+      content: const Text(
+        'All local records, certificates and reminders will be removed.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true) await controller.deleteAllData();
+}
+
+class _FreeSelection {
+  const _FreeSelection(this.cylinders, this.consumables);
+  final List<String> cylinders;
+  final List<String> consumables;
+}
+
+Future<void> _openFreeRecordPicker(
+  BuildContext context,
+  AppController controller,
+) async {
+  final wallet = controller.wallet!;
+  final cylinders = wallet.cylinders
+      .where((value) => value.consumesCurrentSlot)
+      .toList();
+  final consumables = wallet.consumables
+      .where((value) => value.isActive)
+      .toList();
+  final chosenCylinders = <String>{
+    ...(wallet.freeEditableSelection.isEmpty
+        ? cylinders.take(freeEditableCylinderLimit).map((value) => value.id)
+        : wallet.freeEditableSelection),
+  };
+  final chosenConsumables = <String>{
+    ...(wallet.freeEditableConsumableSelection.isEmpty
+        ? consumables
+              .take(freeEditableConsumableLimit)
+              .map((value) => value.id)
+        : wallet.freeEditableConsumableSelection),
+  };
+  final selection = await showModalBottomSheet<_FreeSelection>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.88,
+        builder: (context, scrollController) => ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          children: [
+            const Center(child: _Grabber()),
+            const SizedBox(height: 18),
+            const _SheetHeader(
+              title: 'Free records',
+              subtitle: 'Choose up to three in each group.',
+            ),
+            if (cylinders.length > freeEditableCylinderLimit) ...[
+              const SizedBox(height: 20),
+              const _SectionLabel('GAS'),
+              ...cylinders.map(
+                (value) => CheckboxListTile(
+                  value: chosenCylinders.contains(value.id),
+                  title: Text(value.nickname),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (checked) {
+                    setState(() {
+                      if (checked == true &&
+                          chosenCylinders.length < freeEditableCylinderLimit) {
+                        chosenCylinders.add(value.id);
+                      } else if (checked != true) {
+                        chosenCylinders.remove(value.id);
+                      }
+                    });
+                  },
+                ),
+              ),
+            ],
+            if (consumables.length > freeEditableConsumableLimit) ...[
+              const SizedBox(height: 20),
+              const _SectionLabel('CONSUMABLE'),
+              ...consumables.map(
+                (value) => CheckboxListTile(
+                  value: chosenConsumables.contains(value.id),
+                  title: Text('${value.productName} · ${value.batchLot}'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (checked) {
+                    setState(() {
+                      if (checked == true &&
+                          chosenConsumables.length <
+                              freeEditableConsumableLimit) {
+                        chosenConsumables.add(value.id);
+                      } else if (checked != true) {
+                        chosenConsumables.remove(value.id);
+                      }
+                    });
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                _FreeSelection(
+                  chosenCylinders.toList(),
+                  chosenConsumables.toList(),
+                ),
+              ),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  if (selection == null) return;
+  await controller.run(() async {
+    await controller.engine.selectFreeEditable(selection.cylinders);
+    await controller.engine.selectFreeEditableConsumables(
+      selection.consumables,
+    );
+  }, success: 'Free records updated.');
+}
+
+class _SupplierField extends StatelessWidget {
+  const _SupplierField({
+    required this.suppliers,
+    required this.supplierId,
+    required this.onChanged,
+    required this.onAdd,
+  });
+
+  final List<Supplier> suppliers;
+  final String? supplierId;
+  final ValueChanged<String?> onChanged;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(
+        child: DropdownButtonFormField<String?>(
+          key: ValueKey(supplierId),
+          initialValue: supplierId,
+          decoration: const InputDecoration(labelText: 'Supplier (optional)'),
+          items: <DropdownMenuItem<String?>>[
+            const DropdownMenuItem(value: null, child: Text('None')),
+            ...suppliers.map(
+              (value) =>
+                  DropdownMenuItem(value: value.id, child: Text(value.name)),
+            ),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+      const SizedBox(width: 8),
+      IconButton.filledTonal(
+        tooltip: 'Add supplier',
+        onPressed: onAdd,
+        icon: const Icon(Icons.add),
+      ),
+    ],
+  );
+}
+
+Future<Supplier?> _quickCreateSupplier(
+  BuildContext context,
+  AppController controller,
+) async {
+  final name = TextEditingController();
+  final value = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Add supplier'),
+      content: TextField(
+        controller: name,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(labelText: 'Name'),
+        onSubmitted: (value) {
+          if (value.trim().isNotEmpty) Navigator.pop(context, value.trim());
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (name.text.trim().isNotEmpty) {
+              Navigator.pop(context, name.text.trim());
+            }
+          },
+          child: const Text('Add'),
+        ),
+      ],
+    ),
+  );
+  name.dispose();
+  if (value == null) return null;
+  Supplier? created;
+  final saved = await controller.run(() async {
+    created = await controller.engine.createSupplier(value);
+  });
+  return saved ? created : null;
+}
+
 class _AddCylinderSheet extends StatefulWidget {
-  const _AddCylinderSheet({required this.wallet, this.prefilledSerial});
-  final WalletData wallet;
+  const _AddCylinderSheet({required this.controller, this.prefilledSerial});
+  final AppController controller;
   final String? prefilledSerial;
 
   @override
@@ -2271,6 +2976,7 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
   String gas = 'Argon';
   RelationshipType relationship = RelationshipType.owned;
   String? supplierId;
+  String? formError;
 
   @override
   void dispose() {
@@ -2286,20 +2992,50 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
     subtitle: 'Start with the details you know. You can add costs later.',
     action: 'Save cylinder',
     onAction: () {
+      final capacityText = capacity.text.trim();
+      final parsedCapacity = capacityText.isEmpty
+          ? null
+          : double.tryParse(capacityText.replaceAll(',', '.'));
+      final normalizedCode = serial.text.trim().toLowerCase();
+      final duplicateCode = normalizedCode.isNotEmpty &&
+          (widget.controller.wallet!.cylinders.any(
+                (value) =>
+                    value.serialNumber?.trim().toLowerCase() == normalizedCode,
+              ) ||
+              widget.controller.wallet!.consumables.any(
+                (value) =>
+                    value.primaryCode.trim().toLowerCase() == normalizedCode,
+              ));
+      final error = name.text.trim().isEmpty
+          ? 'Enter a name.'
+          : capacityText.isNotEmpty &&
+                (parsedCapacity == null || parsedCapacity <= 0)
+          ? 'Check capacity.'
+          : duplicateCode
+          ? 'Code already saved.'
+          : null;
+      if (error != null) {
+        setState(() => formError = error);
+        return;
+      }
       Navigator.pop(
         context,
         AddCylinderDraft(
           nickname: name.text,
           gasType: gas,
           relationship: relationship,
-          capacityValue: double.tryParse(capacity.text.replaceAll(',', '.')),
-          capacityUnit: widget.wallet.settings.defaultMassUnit,
+          capacityValue: parsedCapacity,
+          capacityUnit: widget.controller.wallet!.settings.defaultMassUnit,
           serialNumber: serial.text,
           supplierId: supplierId,
         ),
       );
     },
     children: [
+      if (formError != null) ...[
+        _InlineError(formError!),
+        const SizedBox(height: 12),
+      ],
       TextField(
         controller: name,
         autofocus: true,
@@ -2355,7 +3091,7 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
               ),
               decoration: InputDecoration(
                 labelText:
-                    'Capacity (${widget.wallet.settings.defaultMassUnit})',
+                    'Capacity (${widget.controller.wallet!.settings.defaultMassUnit})',
               ),
             ),
           ),
@@ -2368,29 +3104,35 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
           ),
         ],
       ),
-      if (widget.wallet.suppliers.isNotEmpty) ...[
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String?>(
-          initialValue: supplierId,
-          decoration: const InputDecoration(labelText: 'Supplier (optional)'),
-          items: <DropdownMenuItem<String?>>[
-            const DropdownMenuItem(value: null, child: Text('No supplier')),
-            ...widget.wallet.suppliers.map(
-              (value) =>
-                  DropdownMenuItem(value: value.id, child: Text(value.name)),
-            ),
-          ],
-          onChanged: (value) => setState(() => supplierId = value),
-        ),
-      ],
+      const SizedBox(height: 14),
+      _SupplierField(
+        suppliers: widget.controller.wallet!.suppliers,
+        supplierId: supplierId,
+        onChanged: (value) => setState(() => supplierId = value),
+        onAdd: () async {
+          final supplier = await _quickCreateSupplier(
+            context,
+            widget.controller,
+          );
+          if (mounted && supplier != null) {
+            setState(() => supplierId = supplier.id);
+          }
+        },
+      ),
     ],
   );
 }
 
 class _RecordDraft {
-  const _RecordDraft({this.amount, this.supplierId, this.note});
+  const _RecordDraft({
+    this.amount,
+    this.supplierId,
+    this.serialNumber,
+    this.note,
+  });
   final Money? amount;
   final String? supplierId;
+  final String? serialNumber;
   final String? note;
 }
 
@@ -2410,12 +3152,15 @@ class _RecordSheet extends StatefulWidget {
 
 class _RecordSheetState extends State<_RecordSheet> {
   final amount = TextEditingController();
+  final serial = TextEditingController();
   final note = TextEditingController();
   String? supplierId;
+  String? formError;
 
   @override
   void dispose() {
     amount.dispose();
+    serial.dispose();
     note.dispose();
     super.dispose();
   }
@@ -2428,7 +3173,31 @@ class _RecordSheetState extends State<_RecordSheet> {
       subtitle: widget.cylinder.nickname,
       action: isRefill ? 'Save refill' : 'Save exchange',
       onAction: () {
-        final parsed = double.tryParse(amount.text.replaceAll(',', '.'));
+        final amountText = amount.text.trim();
+        final parsed = amountText.isEmpty
+            ? null
+            : double.tryParse(amountText.replaceAll(',', '.'));
+        if (amountText.isNotEmpty && (parsed == null || parsed < 0)) {
+          setState(() => formError = 'Check cost.');
+          return;
+        }
+        final normalizedSerial = serial.text.trim().toLowerCase();
+        if (!isRefill &&
+            normalizedSerial.isNotEmpty &&
+            (widget.wallet.cylinders.any(
+                  (value) =>
+                      value.id != widget.cylinder.id &&
+                      value.serialNumber?.trim().toLowerCase() ==
+                          normalizedSerial,
+                ) ||
+                widget.wallet.consumables.any(
+                  (value) =>
+                      value.primaryCode.trim().toLowerCase() ==
+                      normalizedSerial,
+                ))) {
+          setState(() => formError = 'Serial already saved.');
+          return;
+        }
         Navigator.pop(
           context,
           _RecordDraft(
@@ -2439,11 +3208,16 @@ class _RecordSheetState extends State<_RecordSheet> {
                     currencyCode: widget.wallet.settings.currencyCode,
                   ),
             supplierId: supplierId,
+            serialNumber: isRefill ? null : serial.text,
             note: note.text,
           ),
         );
       },
       children: [
+        if (formError != null) ...[
+          _InlineError(formError!),
+          const SizedBox(height: 12),
+        ],
         TextField(
           controller: amount,
           autofocus: true,
@@ -2453,6 +3227,16 @@ class _RecordSheetState extends State<_RecordSheet> {
             hintText: '0.00',
           ),
         ),
+        if (!isRefill) ...[
+          const SizedBox(height: 14),
+          TextField(
+            controller: serial,
+            decoration: const InputDecoration(
+              labelText: 'New serial (optional)',
+              helperText: 'Leave blank if the replacement serial is unknown.',
+            ),
+          ),
+        ],
         if (widget.wallet.suppliers.isNotEmpty) ...[
           const SizedBox(height: 14),
           DropdownButtonFormField<String?>(
@@ -2679,25 +3463,37 @@ class _CylinderSheet extends StatelessWidget {
               runSpacing: 10,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => _openRecord(
-                    context,
-                    controller,
-                    CylinderEventType.refill,
-                  ),
+                  onPressed: cylinder.consumesCurrentSlot
+                      ? () => _openRecord(
+                          context,
+                          controller,
+                          CylinderEventType.refill,
+                          target: cylinder,
+                        )
+                      : null,
                   icon: const Icon(Icons.local_gas_station_outlined),
                   label: const Text('Refill'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => _openRecord(
-                    context,
-                    controller,
-                    CylinderEventType.exchange,
-                  ),
+                  onPressed: cylinder.consumesCurrentSlot
+                      ? () => _openRecord(
+                          context,
+                          controller,
+                          CylinderEventType.exchange,
+                          target: cylinder,
+                        )
+                      : null,
                   icon: const Icon(Icons.swap_horiz),
                   label: const Text('Exchange'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => _openReminder(context, controller),
+                  onPressed: cylinder.consumesCurrentSlot
+                      ? () => _openReminder(
+                          context,
+                          controller,
+                          target: cylinder,
+                        )
+                      : null,
                   icon: const Icon(Icons.add_alert),
                   label: const Text('Reminder'),
                 ),
@@ -2776,7 +3572,7 @@ class _MiniStat extends StatelessWidget {
             label,
             style: const TextStyle(
               color: WalletColors.muted,
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
             ),
@@ -2880,9 +3676,11 @@ Future<void> _createSupplier(
 ) async {
   final name = TextEditingController();
   final notes = TextEditingController();
+  String? validationError;
   final submitted = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
       title: const Text('Add supplier'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2890,7 +3688,10 @@ Future<void> _createSupplier(
           TextField(
             controller: name,
             autofocus: true,
-            decoration: const InputDecoration(labelText: 'Name'),
+            decoration: InputDecoration(
+              labelText: 'Name',
+              errorText: validationError,
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -2905,10 +3706,24 @@ Future<void> _createSupplier(
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, true),
+          onPressed: () {
+            final cleaned = name.text.trim();
+            final duplicate = controller.wallet!.suppliers.any(
+              (value) => value.name.toLowerCase() == cleaned.toLowerCase(),
+            );
+            if (cleaned.isEmpty || duplicate) {
+              setDialogState(
+                () => validationError =
+                    cleaned.isEmpty ? 'Enter a name.' : 'Already saved.',
+              );
+              return;
+            }
+            Navigator.pop(context, true);
+          },
           child: const Text('Add supplier'),
         ),
       ],
+      ),
     ),
   );
   if (submitted == true) {
@@ -2959,19 +3774,26 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         ),
         const SizedBox(height: 18),
         Text(
-          'Keep your whole welding wallet editable',
+          'Pro: no ads, unlimited records',
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 8),
         Text(
-          'Pro removes the three-cylinder and three-consumable editing limits. Existing history is always preserved, even if Pro ends.',
+          Platform.isIOS
+              ? 'One purchase. Every record stays editable.'
+              : 'Unlimited while Pro is active. Saved history remains if Pro ends.',
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 20),
         const _FeatureLine(
           icon: Icons.all_inclusive,
-          title: 'Unlimited welding records',
-          body: 'Add and edit every current cylinder and active consumable batch.',
+          title: 'Unlimited records',
+          body: 'Add and edit every active cylinder and consumable batch.',
+        ),
+        const _FeatureLine(
+          icon: Icons.block,
+          title: 'No ads',
+          body: 'The bottom banner is removed.',
         ),
         const _FeatureLine(
           icon: Icons.lock_outline,
@@ -3010,7 +3832,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                         width: double.infinity,
                         child: FilledButton(
                           onPressed: () =>
-                              widget.controller.billing.purchase(product),
+                              widget.controller.purchase(product),
                           child: Text('${product.title} · ${product.price}'),
                         ),
                       ),
@@ -3022,13 +3844,14 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         ),
         const SizedBox(height: 8),
         TextButton(
-          onPressed: widget.controller.billing.restore,
-          child: const Text('Restore purchases'),
+          onPressed: widget.controller.restorePurchases,
+          child: const Text('Restore'),
         ),
-        TextButton(
-          onPressed: widget.controller.billing.openManagement,
-          child: const Text('Manage subscription'),
-        ),
+        if (!Platform.isIOS)
+          TextButton(
+            onPressed: widget.controller.openPurchaseManagement,
+            child: const Text('Manage subscription'),
+          ),
       ],
     ),
   );
@@ -3143,6 +3966,31 @@ class _EmptyCard extends StatelessWidget {
               FilledButton.tonal(onPressed: onAction, child: Text(action!)),
             ],
           ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _InlineError extends StatelessWidget {
+  const _InlineError(this.message);
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onErrorContainer,
+          fontWeight: FontWeight.w700,
         ),
       ),
     ),

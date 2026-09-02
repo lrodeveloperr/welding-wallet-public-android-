@@ -124,11 +124,7 @@ class FileWalletRepository implements WalletRepository {
   Future<void> purge() async {
     final directory = await _directory;
     if (!await directory.exists()) return;
-    for (final entity in directory.listSync()) {
-      if (entity is File && entity.path.contains('wallet')) {
-        await entity.delete();
-      }
-    }
+    await directory.delete(recursive: true);
   }
 }
 

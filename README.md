@@ -17,17 +17,20 @@ The selected skin adapts the MIT-licensed [Inventorya](https://github.com/mina-a
 
 ## Preserved rules
 
-- Three current cylinders are editable on the free plan. A fourth cylinder draft is stored and can resume once after a store-verified Pro purchase.
-- Three active consumable batches are editable on the free plan. A fourth consumable draft uses the same Pro entitlement and resumes once after verification.
+- Free includes one fixed, non-personalized banner, three active cylinders and three active consumable batches.
+- Pro removes ads and supports unlimited records.
+- A fourth cylinder or consumable draft is stored and can resume once after a store-verified Pro purchase.
 - Downgrades retain every saved cylinder and consumable record; gated items are not silently deleted.
+- Free users choose which three current cylinders and three active batches remain editable after a downgrade.
 - Suppliers referenced by cylinders, consumables, events or pending drafts cannot be deleted.
-- Consumable barcode/QR codes cannot collide with another consumable batch or a cylinder serial.
+- Cylinder serials and consumable barcode/QR codes are unique across the wallet and imported backups.
+- Consumable receipts include quantity and unit; issue/use cannot exceed the remaining balance.
 - Certificates are user-supplied local documents. Welding Wallet records attachment/history only and does not authenticate, certify or determine welding compliance.
 - Costs remain separated by ISO currency instead of being combined incorrectly.
 - Private storage uses atomic current/previous files with corruption quarantine and recovery.
-- Exported backups omit entitlement state and device-local photo/certificate paths and are capped at 5 MB.
-- Reminder deletion cancels the scheduled system notification before removing the wallet record.
-- Store access fails closed and uses only the locked monthly and annual product identifiers.
+- Native backup files can be saved locally or to Google Drive/iCloud Drive through the platform picker. Portable backups omit entitlement state and device-local certificate paths and are capped at 5 MB.
+- Completing or deleting a reminder cancels its scheduled system notification.
+- Android uses the locked monthly/annual subscriptions. iOS uses a one-time lifetime unlock.
 
 ## Product boundary
 
@@ -45,16 +48,32 @@ flutter test
 flutter build apk --debug
 ```
 
-The GitHub Actions workflow runs formatting, analysis, domain/widget tests, a dashboard golden render, and the Android debug build. It publishes the APK, build log, and rendered design evidence as workflow artifacts.
+GitHub Actions runs formatting, analysis, domain/widget tests, a dashboard golden render, an Android debug build and an unsigned iOS verification build. Android publishes the APK, build log and rendered design evidence as workflow artifacts.
 
 ## Store configuration
 
-Configure these subscription products in Google Play and App Store Connect before release:
+Configure these subscriptions in Google Play:
 
 - `com.gooduse.weldinggaswallet.pro.monthly`
 - `com.gooduse.weldinggaswallet.pro.annual`
 
-The product identifiers intentionally retain the legacy `weldinggaswallet` token so existing store products and upgrade continuity are not broken by the visible rename to Welding Wallet. Production delivery should connect the store verification evidence to your server or the preserved Android verifier before granting long-lived access. The shell only caches store-confirmed access for 24 hours and never grants Pro from private wallet data or backups.
+Configure this non-consumable in App Store Connect:
+
+- `com.gooduse.weldinggaswallet.pro.lifetime`
+
+The product identifiers retain the legacy `weldinggaswallet` token so existing Google Play products remain compatible with the visible rename. Android refreshes store-confirmed subscription access on startup/resume and caches it for 24 hours. The iOS non-consumable is restored as a lifetime entitlement. Private wallet data and backups never grant Pro.
+
+Free-plan ads use Google User Messaging Platform consent, request non-personalized ads and occupy one fixed banner rail below navigation. Debug builds use Google's demo IDs. Release builds require app and banner IDs belonging to publisher `8054612600809568`; demo and foreign banner IDs are rejected.
+
+Android release configuration:
+
+```bash
+WELDING_ADMOB_ANDROID_APP_ID=ca-app-pub-8054612600809568~APP_ID \
+flutter build appbundle --release \
+  --dart-define=WELDING_ANDROID_ADMOB_BANNER_ID=ca-app-pub-8054612600809568/BANNER_ID
+```
+
+For iOS, set the `WELDING_ADMOB_IOS_APP_ID` Xcode build setting and pass `WELDING_IOS_ADMOB_BANNER_ID` as a Dart define. Replace the placeholders with the app-specific live IDs from AdMob before a store build.
 
 ## Privacy and support
 

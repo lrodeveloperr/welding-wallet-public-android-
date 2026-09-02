@@ -8,6 +8,8 @@ import '../core/models.dart';
 
 const String monthlyProductId = 'com.gooduse.weldinggaswallet.pro.monthly';
 const String annualProductId = 'com.gooduse.weldinggaswallet.pro.annual';
+const String iosLifetimeProductId =
+    'com.gooduse.weldinggaswallet.pro.lifetime';
 
 class BillingService {
   BillingService({InAppPurchase? store}) : _storeOverride = store;
@@ -25,10 +27,13 @@ class BillingService {
 
   Future<List<ProductDetails>> products() async {
     if (!await _store.isAvailable()) return const <ProductDetails>[];
-    final response = await _store.queryProductDetails(const <String>{
-      monthlyProductId,
-      annualProductId,
-    });
+    final identifiers = Platform.isIOS
+        ? const <String>{iosLifetimeProductId}
+        : const <String>{monthlyProductId, annualProductId};
+    final response = await _store.queryProductDetails(identifiers);
+    if (response.error != null) {
+      throw StateError(response.error!.message);
+    }
     return response.productDetails;
   }
 
@@ -43,23 +48,27 @@ class BillingService {
 
   Future<void> _handlePurchases(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
-      final knownProduct =
-          purchase.productID == monthlyProductId ||
-          purchase.productID == annualProductId;
+      final knownProduct = Platform.isIOS
+          ? purchase.productID == iosLifetimeProductId
+          : purchase.productID == monthlyProductId ||
+                purchase.productID == annualProductId;
       final storeConfirmed =
           purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored;
-      if (knownProduct && storeConfirmed) {
-        // The store SDK is the authority. Cached access is deliberately short and
-        // is refreshed through restore/on-resume rather than granted indefinitely.
+      final hasStoreEvidence =
+          purchase.verificationData.localVerificationData.isNotEmpty ||
+          purchase.verificationData.serverVerificationData.isNotEmpty;
+      if (knownProduct && storeConfirmed && hasStoreEvidence) {
         _verified.add(
           Entitlement(
             tier: AccessTier.pro,
             source: Platform.isIOS
                 ? EntitlementSource.appStorePurchase
                 : EntitlementSource.googlePlaySubscription,
-            validUntil: DateTime.now().toUtc().add(const Duration(hours: 24)),
-            willRenew: true,
+            validUntil: Platform.isIOS
+                ? DateTime.utc(9999, 12, 31)
+                : DateTime.now().toUtc().add(const Duration(hours: 24)),
+            willRenew: !Platform.isIOS,
           ),
         );
       }
@@ -70,11 +79,12 @@ class BillingService {
   }
 
   Future<void> openManagement() async {
-    final uri = Platform.isIOS
-        ? Uri.parse('https://apps.apple.com/account/subscriptions')
-        : Uri.parse(
-            'https://play.google.com/store/account/subscriptions?package=com.goodusestudios.weldinggaswallet',
-          );
+    if (Platform.isIOS) {
+      throw StateError('The iOS unlock is a one-time purchase.');
+    }
+    final uri = Uri.parse(
+      'https://play.google.com/store/account/subscriptions?package=com.goodusestudios.weldinggaswallet',
+    );
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw StateError('Could not open subscription management.');
     }

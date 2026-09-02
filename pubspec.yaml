@@ -22,6 +22,7 @@ dependencies:
   mobile_scanner: ^7.4.0
   open_filex: ^4.7.0
   qr_flutter: ^4.1.0
+  google_mobile_ads: ^9.1.0
 
 dev_dependencies:
   flutter_test:
