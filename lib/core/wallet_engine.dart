@@ -325,14 +325,14 @@ class WalletEngine {
           ...current.consumableEvents,
           _consumableEvent(consumableId, ConsumableEventType.archived),
         ],
-        freeEditableConsumableSelection: <String>[
+        freeEditableConsumableSelection: <String>{
           ...current.freeEditableConsumableSelection.where(
             (value) => value != consumableId,
           ),
           ...current.consumables
               .where((value) => value.id != consumableId && value.isActive)
               .map((value) => value.id),
-        ].toSet().take(freeEditableConsumableLimit).toList(),
+        }.take(freeEditableConsumableLimit).toList(),
       );
     });
   }
@@ -387,20 +387,20 @@ class WalletEngine {
             .where((value) => value.consumesCurrentSlot)
             .map((value) => value.id)
             .toList();
-        final allowed = <String>[
+        final allowed = <String>{
           ...current.freeEditableSelection.where(currentCylinderIds.contains),
           ...currentCylinderIds,
-        ].toSet().take(freeEditableCylinderLimit).toList();
+        }.take(freeEditableCylinderLimit).toList();
         final currentConsumableIds = current.consumables
             .where((value) => value.isActive)
             .map((value) => value.id)
             .toList();
-        final allowedConsumables = <String>[
+        final allowedConsumables = <String>{
           ...current.freeEditableConsumableSelection.where(
             currentConsumableIds.contains,
           ),
           ...currentConsumableIds,
-        ].toSet().take(freeEditableConsumableLimit).toList();
+        }.take(freeEditableConsumableLimit).toList();
         return current.next(
           freeEditableSelection: allowed,
           freeEditableConsumableSelection: allowedConsumables,
@@ -515,7 +515,7 @@ class WalletEngine {
             supplierId: supplierId ?? old.supplierId,
             note: <String>[
               if (serialChange.isNotEmpty) serialChange,
-              if (cleanNote != null) cleanNote,
+              ?cleanNote,
             ].join('. '),
           ),
         ],
@@ -784,7 +784,7 @@ class WalletEngine {
           ...current.events,
           _event(cylinderId, type, note: note),
         ],
-        freeEditableSelection: <String>[
+        freeEditableSelection: <String>{
           ...current.freeEditableSelection.where(
             (value) => value != cylinderId,
           ),
@@ -794,7 +794,7 @@ class WalletEngine {
                     value.id != cylinderId && value.consumesCurrentSlot,
               )
               .map((value) => value.id),
-        ].toSet().take(freeEditableCylinderLimit).toList(),
+        }.take(freeEditableCylinderLimit).toList(),
       );
     });
   }
