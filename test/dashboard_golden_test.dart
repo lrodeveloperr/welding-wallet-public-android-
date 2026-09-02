@@ -7,6 +7,7 @@ import 'package:welding_wallet/core/wallet_engine.dart';
 import 'package:welding_wallet/core/wallet_repository.dart';
 import 'package:welding_wallet/ui/wallet_app.dart';
 
+@Tags(['golden'])
 void main() {
   testWidgets('Inventorya-inspired wallet dashboard', (tester) async {
     final fontLoader = FontLoader('Roboto')
