@@ -67,9 +67,42 @@ jobs:
 
           python3 /tmp/cylinder_only_v2.py
 
+          # Remove the few cross-feature references that were outside the
+          # bounded consumables screens in the current UI.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('lib/ui/wallet_app.dart')
+          source = path.read_text()
+          source = source.replace(
+              'Gas and consumables. One welding wallet.',
+              'Your welding gas cylinders. One simple wallet.',
+          )
+          source = source.replace(
+              'Welding Gas Wallet keeps cylinder, consumable batch and certificate records on this device.',
+              'Welding Gas Wallet keeps your cylinder records on this device.',
+          )
+          source = source.replace(
+              'Add and edit every active cylinder and consumable batch.',
+              'Add and edit every active cylinder.',
+          )
+          pattern = re.compile(
+              r"\s*\|\|\s*widget(?:\.controller)?\.wallet!?\.consumables\.any\("
+              r"\s*\(value\)\s*=>\s*value\.primaryCode\.trim\(\)\.toLowerCase\(\)"
+              r"\s*==\s*(?:normalizedCode|normalizedSerial),\s*\)",
+              re.S,
+          )
+          source, removed = pattern.subn('', source)
+          if removed != 2:
+              raise SystemExit(f'expected two cross-feature duplicate-code checks, removed {removed}')
+          path.write_text(source)
+          PY
+
           # No active consumable/certificate module may remain. Scanner terms
           # are intentionally allowed because scanning cylinder serials remains.
-          if grep -RniE 'consumable|certificate|qr_flutter|open_filex|document_store' lib pubspec.yaml; then
+          # Apple's billing API method buyNonConsumable is unrelated and excluded.
+          if grep -RniE --exclude=billing_service.dart 'consumable|certificate|qr_flutter|open_filex|document_store' lib pubspec.yaml; then
             echo 'Cylinder-only product-boundary violation found.' >&2
             exit 1
           fi
@@ -115,7 +148,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RniE 'consumable|certificate|qr_flutter|open_filex|document_store' lib pubspec.yaml; then
+          if grep -RniE --exclude=billing_service.dart 'consumable|certificate|qr_flutter|open_filex|document_store' lib pubspec.yaml; then
             echo 'Cylinder-only product-boundary violation found after build.' >&2
             exit 1
           fi
