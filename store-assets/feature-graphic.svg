@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="500" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#081A31"/>
+      <stop offset="1" stop-color="#173A62"/>
+    </linearGradient>
+    <linearGradient id="tank" x1="757" y1="126" x2="757" y2="396" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4CC3D9"/>
+      <stop offset="1" stop-color="#1687A7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="500" fill="url(#bg)"/>
+  <circle cx="972" cy="36" r="240" fill="#FFFFFF" opacity="0.04"/>
+  <circle cx="65" cy="498" r="210" fill="#4CC3D9" opacity="0.055"/>
+  <text x="84" y="184" fill="#FFFFFF" font-family="DejaVu Sans, sans-serif" font-size="54" font-weight="700">Welding Gas Wallet</text>
+  <text x="86" y="250" fill="#C8D7E8" font-family="DejaVu Sans, sans-serif" font-size="30">Your cylinders, costs and reminders.</text>
+  <rect x="84" y="300" width="455" height="64" rx="32" fill="#F29D38"/>
+  <text x="312" y="341" text-anchor="middle" fill="#0D2745" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700">READY  •  LOW  •  EMPTY  •  AWAY</text>
+  <g transform="translate(35 0)">
+    <rect x="662" y="88" width="250" height="324" rx="72" fill="#F7FAFC"/>
+    <rect x="719" y="111" width="76" height="42" rx="13" fill="#F29D38"/>
+    <rect x="699" y="143" width="116" height="42" rx="14" fill="#0D2745"/>
+    <path d="M704 174H810C834 174 853 193 853 217V337C853 373 824 402 788 402H726C690 402 661 373 661 337V217C661 193 680 174 704 174Z" fill="url(#tank)" stroke="#0D2745" stroke-width="15"/>
+    <path d="M680 245H834" stroke="#BDEAF2" stroke-width="15" stroke-linecap="round"/>
+    <path d="M700 326L740 365L815 277" fill="none" stroke="#FFFFFF" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

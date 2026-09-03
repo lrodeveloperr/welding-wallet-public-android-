@@ -8,10 +8,12 @@ The product is **cylinders only**. It does not scan cylinders or request camera 
 
 Cylinder names are optional and generated from gas and capacity when omitted. Capacity supports ft³, L, m³, kg and lb, with ft³ defaulting in US/Canadian regions and L elsewhere.
 
+The current customer-facing interface and store listing are English-only.
+
 ## Monetization
 
-- Free: one fixed non-personalized bottom banner and up to three current editable cylinders.
-- Pro: no ads and unlimited cylinder records.
+- Free: up to three current editable cylinders.
+- Pro: unlimited cylinder records.
 - Android uses the configured monthly/annual subscriptions.
 - iOS uses the configured one-time lifetime unlock.
 - Existing store identifiers are retained for purchase and entitlement continuity.

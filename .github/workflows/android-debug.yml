@@ -37,6 +37,14 @@ jobs:
       - name: Generate localizations
         run: flutter gen-l10n
 
+      - name: Verify no advertising SDK
+        shell: bash
+        run: |
+          if rg -n -i 'google_mobile_ads|admob|GADApplicationIdentifier|com\.google\.android\.gms\.ads' pubspec.yaml pubspec.lock lib android ios; then
+            echo 'Advertising code or configuration must not ship in Welding Gas Wallet.'
+            exit 1
+          fi
+
       - name: Format
         run: dart format lib test
 
@@ -69,8 +77,8 @@ jobs:
         if: steps.flutter_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: welding-wallet-dashboard
-          path: test/goldens/dashboard.png
+          name: welding-wallet-store-screens
+          path: test/goldens/*.png
           if-no-files-found: error
 
       - name: Upload debug APK
@@ -87,7 +95,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib test pubspec.lock test/goldens/dashboard.png
+          git add lib test pubspec.lock test/goldens
           git diff --cached --quiet || git commit -m "chore: update dashboard design evidence [skip ci]"
           git push
 

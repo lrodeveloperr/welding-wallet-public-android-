@@ -89,18 +89,30 @@ void main() {
     expect(find.text('Scan'), findsNothing);
     expect(find.text('READY'), findsOneWidget);
     expect(find.text('Add'), findsOneWidget);
+    await expectLater(
+      find.byType(WeldingWalletApp),
+      matchesGoldenFile('goldens/dashboard.png'),
+    );
 
     await tester.ensureVisible(find.text('Low'));
     await tester.tap(find.text('Low'));
     await tester.pumpAndSettle();
     expect(find.text('LOW'), findsOneWidget);
     expect(find.text('Reminder'), findsOneWidget);
+    await expectLater(
+      find.byType(WeldingWalletApp),
+      matchesGoldenFile('goldens/status-low.png'),
+    );
 
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
     expect(find.text('Name (optional)'), findsOneWidget);
     expect(find.text('ft³'), findsOneWidget);
+    await expectLater(
+      find.byType(WeldingWalletApp),
+      matchesGoldenFile('goldens/add-cylinder.png'),
+    );
   });
 
   testWidgets('empty dashboard offers only Add', (tester) async {
@@ -133,5 +145,9 @@ void main() {
     expect(find.text('Low'), findsNothing);
     expect(find.text('Empty'), findsNothing);
     expect(find.text('Away'), findsNothing);
+    await expectLater(
+      find.byType(WeldingWalletApp),
+      matchesGoldenFile('goldens/empty-wallet.png'),
+    );
   });
 }

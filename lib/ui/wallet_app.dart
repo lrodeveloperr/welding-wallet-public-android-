@@ -3,14 +3,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_controller.dart';
 import '../core/models.dart';
-import '../services/ad_service.dart';
+import '../services/billing_service.dart';
 import 'theme.dart';
 
 class WeldingWalletApp extends StatefulWidget {
@@ -38,43 +37,26 @@ class _WeldingWalletAppState extends State<WeldingWalletApp> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.controller,
     builder: (context, _) {
-      final localeName = widget.controller.wallet?.settings.locale ?? 'en';
-      final parts = localeName.split('-');
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Welding Gas Wallet',
         theme: buildWalletTheme(),
-        locale: Locale.fromSubtags(
-          languageCode: parts.first,
-          scriptCode: parts.length > 1 && parts[1].length == 4
-              ? parts[1]
-              : null,
-        ),
-        supportedLocales: supportedLocales.map((value) {
-          final bits = value.split('-');
-          return Locale.fromSubtags(
-            languageCode: bits.first,
-            scriptCode: bits.length > 1 ? bits[1] : null,
-          );
-        }),
+        locale: const Locale('en'),
+        supportedLocales: const <Locale>[Locale('en')],
         localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: _WalletRoot(
-          controller: widget.controller,
-          enableAds: widget.autoInitialize,
-        ),
+        home: _WalletRoot(controller: widget.controller),
       );
     },
   );
 }
 
 class _WalletRoot extends StatelessWidget {
-  const _WalletRoot({required this.controller, required this.enableAds});
+  const _WalletRoot({required this.controller});
   final AppController controller;
-  final bool enableAds;
 
   @override
   Widget build(BuildContext context) {
@@ -98,11 +80,7 @@ class _WalletRoot extends StatelessWidget {
         ),
       );
     }
-    return _WalletShell(
-      controller: controller,
-      wallet: wallet,
-      enableAds: enableAds,
-    );
+    return _WalletShell(controller: controller, wallet: wallet);
   }
 }
 
@@ -110,11 +88,9 @@ class _WalletShell extends StatelessWidget {
   const _WalletShell({
     required this.controller,
     required this.wallet,
-    required this.enableAds,
   });
   final AppController controller;
   final WalletData wallet;
-  final bool enableAds;
 
   @override
   Widget build(BuildContext context) {
@@ -143,9 +119,6 @@ class _WalletShell extends StatelessWidget {
         onPro: () => _openPaywall(context, controller),
         onReminderToggle: (value) =>
             controller.run(() => controller.setRemindersEnabled(value)),
-        onLocale: (value) => controller.run(
-          () => controller.engine.updateSettings(locale: value),
-        ),
         onCurrency: (value) => controller.run(
           () => controller.engine.updateSettings(currencyCode: value),
         ),
@@ -159,11 +132,8 @@ class _WalletShell extends StatelessWidget {
         onRestore: () => _restoreBackup(context, controller),
         onDelete: () => _deleteWallet(context, controller),
         onFreeRecords: () => _openFreeRecordPicker(context, controller),
-        privacyOptionsRequired: controller.ads.privacyOptionsRequired,
-        onPrivacyOptions: controller.showAdPrivacyOptions,
       ),
     ];
-    final isPro = wallet.entitlementCache.isProAt(DateTime.now().toUtc());
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -181,120 +151,26 @@ class _WalletShell extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          NavigationBar(
-            selectedIndex: controller.tabIndex,
-            onDestinationSelected: controller.selectTab,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.propane_tank_outlined),
-                selectedIcon: Icon(Icons.propane_tank),
-                label: 'Gas',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.receipt_long_outlined),
-                selectedIcon: Icon(Icons.receipt_long),
-                label: 'History',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: 'Settings',
-              ),
-            ],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: controller.tabIndex,
+        onDestinationSelected: controller.selectTab,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.propane_tank_outlined),
+            selectedIcon: Icon(Icons.propane_tank),
+            label: 'Gas',
           ),
-          if (enableAds && !isPro) _FreeBanner(service: controller.ads),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'History',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
         ],
-      ),
-    );
-  }
-}
-
-class _FreeBanner extends StatefulWidget {
-  const _FreeBanner({required this.service});
-
-  final AdService service;
-
-  @override
-  State<_FreeBanner> createState() => _FreeBannerState();
-}
-
-class _FreeBannerState extends State<_FreeBanner> {
-  BannerAd? _banner;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.service.addListener(_sync);
-    unawaited(widget.service.initialize());
-    _sync();
-  }
-
-  void _sync() {
-    if (!mounted) return;
-    if (!widget.service.canLoadAds) {
-      _banner?.dispose();
-      _banner = null;
-      if (_loaded) setState(() => _loaded = false);
-      return;
-    }
-    if (_banner != null) return;
-
-    final banner = BannerAd(
-      adUnitId: widget.service.bannerUnitId,
-      size: AdSize.banner,
-      request: const AdRequest(nonPersonalizedAds: true),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (!mounted) {
-            ad.dispose();
-            return;
-          }
-          setState(() => _loaded = true);
-        },
-        onAdFailedToLoad: (ad, _) {
-          ad.dispose();
-          if (!mounted) return;
-          setState(() {
-            _banner = null;
-            _loaded = false;
-          });
-        },
-      ),
-    );
-    _banner = banner;
-    banner.load();
-  }
-
-  @override
-  void dispose() {
-    widget.service.removeListener(_sync);
-    _banner?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final banner = _banner;
-    if (!_loaded || banner == null) return const SizedBox.shrink();
-    return Semantics(
-      label: 'Advertisement',
-      child: Container(
-        height: 51,
-        width: double.infinity,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: WalletColors.border)),
-        ),
-        child: SizedBox(
-          width: banner.size.width.toDouble(),
-          height: banner.size.height.toDouble(),
-          child: AdWidget(ad: banner),
-        ),
       ),
     );
   }
@@ -834,7 +710,6 @@ class _SettingsScreen extends StatelessWidget {
     required this.onReminders,
     required this.onPro,
     required this.onReminderToggle,
-    required this.onLocale,
     required this.onCurrency,
     required this.onMassUnit,
     required this.onVolumeUnit,
@@ -842,15 +717,12 @@ class _SettingsScreen extends StatelessWidget {
     required this.onRestore,
     required this.onDelete,
     required this.onFreeRecords,
-    required this.privacyOptionsRequired,
-    required this.onPrivacyOptions,
   });
   final WalletData wallet;
   final VoidCallback onSuppliers;
   final VoidCallback onReminders;
   final VoidCallback onPro;
   final ValueChanged<bool> onReminderToggle;
-  final ValueChanged<String> onLocale;
   final ValueChanged<String> onCurrency;
   final ValueChanged<String> onMassUnit;
   final ValueChanged<String> onVolumeUnit;
@@ -858,8 +730,6 @@ class _SettingsScreen extends StatelessWidget {
   final VoidCallback onRestore;
   final VoidCallback onDelete;
   final VoidCallback onFreeRecords;
-  final bool privacyOptionsRequired;
-  final VoidCallback onPrivacyOptions;
 
   @override
   Widget build(BuildContext context) {
@@ -905,8 +775,8 @@ class _SettingsScreen extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           isPro
-                              ? 'No ads · Unlimited cylinders'
-                              : '3 current cylinders · Banner ad',
+                              ? 'Unlimited cylinders'
+                              : 'Up to 3 current cylinders',
                           style: const TextStyle(color: Color(0xFFBFC9D7)),
                         ),
                       ],
@@ -958,39 +828,10 @@ class _SettingsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          const _SectionLabel('REGION & UNITS'),
+          const _SectionLabel('CURRENCY & UNITS'),
           const SizedBox(height: 10),
           _SettingsCard(
             children: [
-              ListTile(
-                leading: const Icon(Icons.language),
-                title: const Text('Language'),
-                trailing: DropdownButton<String>(
-                  value:
-                      const <String>{
-                        'en',
-                        'es',
-                        'fr',
-                        'de',
-                        'ar',
-                        'zh-Hans',
-                      }.contains(wallet.settings.locale)
-                      ? wallet.settings.locale
-                      : 'en',
-                  underline: const SizedBox.shrink(),
-                  items: const [
-                    DropdownMenuItem(value: 'en', child: Text('English')),
-                    DropdownMenuItem(value: 'es', child: Text('Español')),
-                    DropdownMenuItem(value: 'fr', child: Text('Français')),
-                    DropdownMenuItem(value: 'de', child: Text('Deutsch')),
-                    DropdownMenuItem(value: 'ar', child: Text('العربية')),
-                    DropdownMenuItem(value: 'zh-Hans', child: Text('简体中文')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) onLocale(value);
-                  },
-                ),
-              ),
               ListTile(
                 leading: const Icon(Icons.payments_outlined),
                 title: const Text('Default currency'),
@@ -1093,13 +934,6 @@ class _SettingsScreen extends StatelessWidget {
           const SizedBox(height: 10),
           _SettingsCard(
             children: [
-              if (privacyOptionsRequired)
-                ListTile(
-                  leading: const Icon(Icons.privacy_tip_outlined),
-                  title: const Text('Privacy choices'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: onPrivacyOptions,
-                ),
               _LinkTile(label: 'Privacy policy', path: 'privacy'),
               _LinkTile(label: 'Terms of use', path: 'terms'),
               _LinkTile(label: 'Safety disclaimer', path: 'disclaimer'),
@@ -1281,7 +1115,7 @@ class _OnboardingScreenState extends State<_OnboardingScreen> {
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
-                            'Free includes one non-personalized banner. Pro removes ads.',
+                            'Free includes up to three current editable cylinders.',
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -2606,7 +2440,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         ),
         const SizedBox(height: 18),
         Text(
-          'Pro: no ads, unlimited records',
+          'Pro: unlimited cylinder records',
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 8),
@@ -2619,11 +2453,6 @@ class _PaywallSheetState extends State<_PaywallSheet> {
           icon: Icons.all_inclusive,
           title: 'Unlimited records',
           body: 'Add and edit every active cylinder.',
-        ),
-        const _FeatureLine(
-          icon: Icons.block,
-          title: 'No ads',
-          body: 'The bottom banner is removed.',
         ),
         const _FeatureLine(
           icon: Icons.lock_outline,
@@ -2662,7 +2491,7 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                         width: double.infinity,
                         child: FilledButton(
                           onPressed: () => widget.controller.purchase(product),
-                          child: Text('${product.title} · ${product.price}'),
+                          child: Text(_paywallProductLabel(product)),
                         ),
                       ),
                     ),
@@ -2674,16 +2503,41 @@ class _PaywallSheetState extends State<_PaywallSheet> {
         const SizedBox(height: 8),
         TextButton(
           onPressed: widget.controller.restorePurchases,
-          child: const Text('Restore'),
+          child: const Text('Restore purchases'),
         ),
         if (!Platform.isIOS)
           TextButton(
             onPressed: widget.controller.openPurchaseManagement,
             child: const Text('Manage subscription'),
           ),
+        const SizedBox(height: 6),
+        Text(
+          Platform.isIOS
+              ? 'One-time purchase charged to your Apple Account. No subscription or automatic renewal.'
+              : 'Payment is charged by Google Play. Subscriptions renew automatically unless cancelled before renewal; access continues through the paid period after cancellation.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 4),
+        const Wrap(
+          alignment: WrapAlignment.center,
+          children: [
+            _LegalButton(label: 'Terms of use', path: 'terms'),
+            _LegalButton(label: 'Privacy policy', path: 'privacy'),
+          ],
+        ),
       ],
     ),
   );
+}
+
+String _paywallProductLabel(ProductDetails product) {
+  if (Platform.isIOS) return 'Lifetime Pro · ${product.price} one time';
+  return switch (product.id) {
+    monthlyProductId => 'Monthly Pro · ${product.price} per month',
+    annualProductId => 'Annual Pro · ${product.price} per year',
+    _ => '${product.title} · ${product.price}',
+  };
 }
 
 class _FormSheet extends StatelessWidget {

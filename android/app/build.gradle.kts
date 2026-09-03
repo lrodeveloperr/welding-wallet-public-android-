@@ -12,16 +12,6 @@ if (keystorePropertiesFile.exists()) {
     FileInputStream(keystorePropertiesFile).use(keystoreProperties::load)
 }
 
-val googleDemoAdMobAppId = "ca-app-pub-3940256099942544~3347511713"
-val approvedAdMobPublisherId = "8054612600809568"
-val productionAdMobAppId = providers
-    .environmentVariable("WELDING_ADMOB_ANDROID_APP_ID")
-    .orElse(providers.gradleProperty("WELDING_ADMOB_ANDROID_APP_ID"))
-    .orNull
-val approvedProductionAdMobApp = Regex(
-    "^ca-app-pub-$approvedAdMobPublisherId~\\d{10}$",
-)
-
 android {
     namespace = "com.goodusestudios.weldinggaswallet"
     compileSdk = flutter.compileSdkVersion
@@ -40,7 +30,6 @@ android {
         multiDexEnabled = true
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders["ADMOB_APP_ID"] = googleDemoAdMobAppId
     }
 
     signingConfigs {
@@ -56,22 +45,8 @@ android {
 
     buildTypes {
         release {
-            manifestPlaceholders["ADMOB_APP_ID"] = productionAdMobAppId ?: "MISSING_ADMOB_APP_ID"
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
-            }
-        }
-    }
-}
-
-tasks.configureEach {
-    if (name.contains("release", ignoreCase = true)) {
-        doFirst {
-            require(
-                productionAdMobAppId != null &&
-                    approvedProductionAdMobApp.matches(productionAdMobAppId),
-            ) {
-                "Release requires WELDING_ADMOB_ANDROID_APP_ID owned by publisher $approvedAdMobPublisherId."
             }
         }
     }
