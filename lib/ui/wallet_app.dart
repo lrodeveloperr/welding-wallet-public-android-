@@ -1535,12 +1535,15 @@ class _SupplierField extends StatelessWidget {
         child: DropdownButtonFormField<String?>(
           key: ValueKey(supplierId),
           initialValue: supplierId,
+          isExpanded: true,
           decoration: const InputDecoration(labelText: 'Supplier (optional)'),
           items: <DropdownMenuItem<String?>>[
             const DropdownMenuItem(value: null, child: Text('None')),
             ...suppliers.map(
-              (value) =>
-                  DropdownMenuItem(value: value.id, child: Text(value.name)),
+              (value) => DropdownMenuItem(
+                value: value.id,
+                child: Text(value.name, overflow: TextOverflow.ellipsis),
+              ),
             ),
           ],
           onChanged: onChanged,

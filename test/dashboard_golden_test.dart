@@ -113,7 +113,7 @@ void main() {
       find.byType(WeldingWalletApp),
       matchesGoldenFile('goldens/add-cylinder.png'),
     );
-  });
+  }, tags: const <String>['golden']);
 
   testWidgets('empty dashboard offers only Add', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -149,5 +149,5 @@ void main() {
       find.byType(WeldingWalletApp),
       matchesGoldenFile('goldens/empty-wallet.png'),
     );
-  });
+  }, tags: const <String>['golden']);
 }
