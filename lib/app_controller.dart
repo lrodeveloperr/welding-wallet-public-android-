@@ -41,6 +41,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   String? error;
   String? notice;
   int tabIndex = 0;
+  DeletedCylinderData? lastDeletedCylinder;
+  Timer? _deletedCylinderTimer;
   StreamSubscription<Entitlement>? _entitlementSubscription;
   bool _observingLifecycle = false;
 
@@ -296,10 +298,55 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return restored;
   }
 
+  Future<bool> deleteCylinder(String cylinderId) async {
+    clearMessage();
+    try {
+      final deleted = await engine.deleteCylinder(cylinderId);
+      for (final reminder in deleted.reminders) {
+        try {
+          await reminders.cancel(reminder);
+        } catch (_) {
+          // The wallet deletion must still complete if the OS reminder is gone.
+        }
+      }
+      lastDeletedCylinder = deleted;
+      _deletedCylinderTimer?.cancel();
+      _deletedCylinderTimer = Timer(const Duration(seconds: 15), () {
+        lastDeletedCylinder = null;
+        notifyListeners();
+      });
+      await reload(notify: false);
+      notice = '${deleted.cylinder.nickname} deleted.';
+      notifyListeners();
+      return true;
+    } catch (value) {
+      error = _message(value);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> undoDeleteCylinder() async {
+    final deleted = lastDeletedCylinder;
+    if (deleted == null) return false;
+    final restored = await run(() async {
+      await engine.restoreDeletedCylinder(deleted);
+      final current = await engine.snapshot();
+      if (current.settings.remindersEnabled) await reconcileReminders();
+    }, success: '${deleted.cylinder.nickname} restored.');
+    if (restored) {
+      _deletedCylinderTimer?.cancel();
+      lastDeletedCylinder = null;
+    }
+    return restored;
+  }
+
   Future<bool> deleteAllData() async => run(() async {
     await reminders.cancelAll();
+    _deletedCylinderTimer?.cancel();
+    lastDeletedCylinder = null;
     await engine.deleteAllWalletData(confirmed: true);
-  }, success: 'Wallet deleted.');
+  }, success: 'All on-device wallet data deleted.');
 
   String _message(Object value) => switch (value) {
     WalletRuleException exception => exception.message,
@@ -311,6 +358,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
     _entitlementSubscription?.cancel();
+    _deletedCylinderTimer?.cancel();
     unawaited(billing.dispose());
     super.dispose();
   }

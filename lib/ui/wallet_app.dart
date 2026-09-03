@@ -85,10 +85,7 @@ class _WalletRoot extends StatelessWidget {
 }
 
 class _WalletShell extends StatelessWidget {
-  const _WalletShell({
-    required this.controller,
-    required this.wallet,
-  });
+  const _WalletShell({required this.controller, required this.wallet});
   final AppController controller;
   final WalletData wallet;
 
@@ -247,17 +244,12 @@ class _DashboardScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                ...current.map(
-                  (cylinder) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _CylinderCard(
-                      cylinder: cylinder,
-                      wallet: wallet,
-                      onTap: () => onCylinder(cylinder),
-                      onState: (state) => onState(cylinder, state),
-                      onReminder: () => onReminder(cylinder),
-                    ),
-                  ),
+                _CurrentCylinderList(
+                  cylinders: current,
+                  wallet: wallet,
+                  onCylinder: onCylinder,
+                  onState: onState,
+                  onReminder: onReminder,
                 ),
               ],
               if (past.isNotEmpty) ...[
@@ -291,6 +283,145 @@ class _DashboardScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+class _CurrentCylinderList extends StatefulWidget {
+  const _CurrentCylinderList({
+    required this.cylinders,
+    required this.wallet,
+    required this.onCylinder,
+    required this.onState,
+    required this.onReminder,
+  });
+
+  final List<Cylinder> cylinders;
+  final WalletData wallet;
+  final ValueChanged<Cylinder> onCylinder;
+  final void Function(Cylinder cylinder, CylinderState state) onState;
+  final ValueChanged<Cylinder> onReminder;
+
+  @override
+  State<_CurrentCylinderList> createState() => _CurrentCylinderListState();
+}
+
+class _CurrentCylinderListState extends State<_CurrentCylinderList> {
+  final search = TextEditingController();
+  CylinderState? filter;
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = search.text.trim().toLowerCase();
+    final visible = widget.cylinders.where((cylinder) {
+      if (filter != null && cylinder.state != filter) return false;
+      final supplier = _firstOrNull(
+        widget.wallet.suppliers.where(
+          (value) => value.id == cylinder.supplierId,
+        ),
+      );
+      final searchable = <String>[
+        cylinder.nickname,
+        cylinder.gasType,
+        cylinder.serialNumber ?? '',
+        supplier?.name ?? '',
+      ].join(' ').toLowerCase();
+      return query.isEmpty || searchable.contains(query);
+    }).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: search,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: 'Search cylinders',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: search.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      search.clear();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _StatusFilterChip(
+                label: 'All',
+                selected: filter == null,
+                onSelected: () => setState(() => filter = null),
+              ),
+              for (final state in CylinderState.values)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: _StatusFilterChip(
+                    label: cylinderStateLabel(state),
+                    selected: filter == state,
+                    onSelected: () => setState(() => filter = state),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (visible.isEmpty)
+          _EmptyCard(
+            icon: Icons.search_off,
+            title: 'No cylinders found',
+            body: 'Try another search or status.',
+            action: 'Clear filters',
+            onAction: () {
+              search.clear();
+              setState(() => filter = null);
+            },
+          )
+        else
+          ...visible.map(
+            (cylinder) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _CylinderCard(
+                cylinder: cylinder,
+                wallet: widget.wallet,
+                onTap: () => widget.onCylinder(cylinder),
+                onState: (state) => widget.onState(cylinder, state),
+                onReminder: () => widget.onReminder(cylinder),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _StatusFilterChip extends StatelessWidget {
+  const _StatusFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) => ChoiceChip(
+    label: Text(label),
+    selected: selected,
+    onSelected: (_) => onSelected(),
+  );
 }
 
 class _CylinderCard extends StatelessWidget {
@@ -524,30 +655,174 @@ class _ActivityScreen extends StatelessWidget {
   final WalletData wallet;
 
   @override
+  Widget build(BuildContext context) => _ScreenFrame(
+    title: 'Activity',
+    subtitle: 'Cylinder activity in one permanent timeline.',
+    child: _ActivityTimeline(wallet: wallet),
+  );
+}
+
+class _ActivityTimeline extends StatefulWidget {
+  const _ActivityTimeline({required this.wallet});
+  final WalletData wallet;
+
+  @override
+  State<_ActivityTimeline> createState() => _ActivityTimelineState();
+}
+
+class _ActivityTimelineState extends State<_ActivityTimeline> {
+  String filter = 'All';
+
+  @override
   Widget build(BuildContext context) {
-    final events = wallet.events.toList()
+    final events = widget.wallet.events.toList()
       ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
-    return _ScreenFrame(
-      title: 'History',
-      subtitle: 'Cylinder activity in one permanent timeline.',
-      child: events.isEmpty
-          ? const _EmptyCard(
-              icon: Icons.receipt_long_outlined,
-              title: 'No history yet',
-              body: 'Cylinder actions will appear here.',
-            )
-          : Column(
-              children: events
-                  .map(
-                    (event) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _EventCard(event: event, wallet: wallet),
-                    ),
-                  )
-                  .toList(),
+    if (events.isEmpty) {
+      return const _EmptyCard(
+        icon: Icons.receipt_long_outlined,
+        title: 'No activity yet',
+        body: 'Cylinder actions will appear here.',
+      );
+    }
+    final refills = events
+        .where((value) => value.type == CylinderEventType.refill)
+        .toList();
+    final totals = <String, int>{};
+    for (final event in events) {
+      final amount = event.amount;
+      if (amount == null) continue;
+      totals.update(
+        amount.currencyCode,
+        (value) => value + amount.minorUnits,
+        ifAbsent: () => amount.minorUnits,
+      );
+    }
+    final refillDates = <String, List<DateTime>>{};
+    for (final event in refills) {
+      refillDates
+          .putIfAbsent(event.cylinderId, () => <DateTime>[])
+          .add(event.occurredAt);
+    }
+    final intervals = <int>[];
+    for (final dates in refillDates.values) {
+      dates.sort();
+      for (var index = 1; index < dates.length; index++) {
+        intervals.add(dates[index].difference(dates[index - 1]).inDays);
+      }
+    }
+    final averageInterval = intervals.isEmpty
+        ? '—'
+        : '${(intervals.reduce((a, b) => a + b) / intervals.length).round()} days';
+    final spend = totals.entries
+        .map(
+          (entry) => formatMoney(
+            Money(minorUnits: entry.value, currencyCode: entry.key),
+            widget.wallet,
+          ),
+        )
+        .join(' + ');
+    final visible = events.where((event) {
+      return switch (filter) {
+        'Refills' => event.type == CylinderEventType.refill,
+        'Status' => event.type == CylinderEventType.stateChanged,
+        _ => true,
+      };
+    }).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          color: WalletColors.ink,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _ActivityMetric(
+                    label: 'SPEND',
+                    value: spend.isEmpty ? '—' : spend,
+                  ),
+                ),
+                Expanded(
+                  child: _ActivityMetric(
+                    label: 'REFILLS',
+                    value: '${refills.length}',
+                  ),
+                ),
+                Expanded(
+                  child: _ActivityMetric(
+                    label: 'AVG. INTERVAL',
+                    value: averageInterval,
+                  ),
+                ),
+              ],
             ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final value in const ['All', 'Refills', 'Status'])
+              ChoiceChip(
+                label: Text(value),
+                selected: filter == value,
+                onSelected: (_) => setState(() => filter = value),
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (visible.isEmpty)
+          const _EmptyCard(
+            icon: Icons.filter_alt_off_outlined,
+            title: 'Nothing in this filter',
+            body: 'Choose another activity filter.',
+          )
+        else
+          ...visible.map(
+            (event) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _EventCard(event: event, wallet: widget.wallet),
+            ),
+          ),
+      ],
     );
   }
+}
+
+class _ActivityMetric extends StatelessWidget {
+  const _ActivityMetric({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 5),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFFBFC9D7),
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _EventCard extends StatelessWidget {
@@ -923,7 +1198,8 @@ class _SettingsScreen extends StatelessWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.delete_forever_outlined),
-                title: const Text('Delete wallet'),
+                title: const Text('Delete all data'),
+                subtitle: const Text('Erase this wallet from this device'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: onDelete,
               ),
@@ -1336,6 +1612,20 @@ Future<void> _openCylinder(
     builder: (_) =>
         _CylinderSheet(controller: controller, cylinderId: cylinder.id),
   );
+  final deleted = controller.lastDeletedCylinder;
+  if (!context.mounted || deleted == null) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      duration: const Duration(seconds: 15),
+      content: Text('${deleted.cylinder.nickname} deleted.'),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () {
+          unawaited(controller.undoDeleteCylinder());
+        },
+      ),
+    ),
+  );
 }
 
 Future<void> _openReminders(
@@ -1426,25 +1716,60 @@ Future<void> _deleteWallet(
   BuildContext context,
   AppController controller,
 ) async {
+  final confirmation = TextEditingController();
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Delete wallet?'),
-      content: const Text(
-        'All local cylinder records and reminders will be removed.',
+      icon: Icon(
+        Icons.delete_forever_outlined,
+        color: Theme.of(context).colorScheme.error,
+      ),
+      title: const Text('Delete all data?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This permanently removes cylinders, suppliers, costs, activity, reminders and preferences from this device.',
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Store purchases and separately saved backup files are not deleted.',
+          ),
+          const SizedBox(height: 18),
+          TextField(
+            controller: confirmation,
+            autofocus: true,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+              labelText: 'Type DELETE to confirm',
+            ),
+          ),
+        ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Delete'),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: confirmation,
+          builder: (context, value, _) => FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: value.text.trim().toUpperCase() == 'DELETE'
+                ? () => Navigator.pop(context, true)
+                : null,
+            icon: const Icon(Icons.delete_forever_outlined),
+            label: const Text('Delete all data'),
+          ),
         ),
       ],
     ),
   );
+  confirmation.dispose();
   if (confirmed == true) await controller.deleteAllData();
 }
 
@@ -1651,7 +1976,8 @@ class _AddCylinderSheetState extends State<_AddCylinderSheet> {
             (value) =>
                 value.serialNumber?.trim().toLowerCase() == normalizedCode,
           );
-      final error = capacityText.isNotEmpty &&
+      final error =
+          capacityText.isNotEmpty &&
               (parsedCapacity == null || parsedCapacity <= 0)
           ? 'Check capacity.'
           : duplicateCode
@@ -1835,7 +2161,7 @@ class _RecordSheetState extends State<_RecordSheet> {
         final parsed = amountText.isEmpty
             ? null
             : double.tryParse(amountText.replaceAll(',', '.'));
-        if (amountText.isNotEmpty && (parsed == null || parsed < 0)) {
+        if (amountText.isNotEmpty && (parsed == null || parsed <= 0)) {
           setState(() => formError = 'Check cost.');
           return;
         }
@@ -2198,6 +2524,83 @@ class _CylinderSheet extends StatelessWidget {
                       : null,
                   icon: const Icon(Icons.assignment_return_outlined),
                   label: const Text('Return'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: cylinder.consumesCurrentSlot
+                      ? () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Archive cylinder?'),
+                              content: const Text(
+                                'The cylinder leaves active inventory, but its cost and activity history remain available.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Archive'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            await controller.run(
+                              () => controller.engine.archiveCylinder(
+                                cylinder.id,
+                              ),
+                              success: 'Cylinder archived.',
+                            );
+                          }
+                        }
+                      : null,
+                  icon: const Icon(Icons.archive_outlined),
+                  label: const Text('Archive'),
+                ),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text('Delete ${cylinder.nickname}?'),
+                        content: Text(
+                          'This permanently deletes the cylinder, ${events.length} activity ${events.length == 1 ? 'entry' : 'entries'}, and its reminders. You can undo for 15 seconds.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .error,
+                              foregroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .onError,
+                            ),
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete cylinder'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true) return;
+                    final deleted = await controller.deleteCylinder(
+                      cylinder.id,
+                    );
+                    if (deleted && context.mounted) Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Delete'),
                 ),
               ],
             ),

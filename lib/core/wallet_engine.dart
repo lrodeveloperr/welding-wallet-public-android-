@@ -24,6 +24,20 @@ class AddCylinderResult {
   bool get wasAdded => cylinder != null;
 }
 
+class DeletedCylinderData {
+  const DeletedCylinderData({
+    required this.cylinder,
+    required this.events,
+    required this.reminders,
+    required this.wasFreeEditable,
+  });
+
+  final Cylinder cylinder;
+  final List<CylinderEvent> events;
+  final List<Reminder> reminders;
+  final bool wasFreeEditable;
+}
+
 class WalletEngine {
   WalletEngine({required this.repository, Uuid? uuid, Now? now})
     : _uuid = uuid ?? const Uuid(),
@@ -224,42 +238,46 @@ class WalletEngine {
         return current.next(freeEditableSelection: unique.toList());
       });
 
-  Future<void> changeCylinderState(
-    String cylinderId,
-    CylinderState state,
-  ) => _recordEditableEvent(
-    cylinderId,
-    CylinderEventType.stateChanged,
-    state: state,
-    note: cylinderStateLabel(state),
-  );
+  Future<void> changeCylinderState(String cylinderId, CylinderState state) =>
+      _recordEditableEvent(
+        cylinderId,
+        CylinderEventType.stateChanged,
+        state: state,
+        note: cylinderStateLabel(state),
+      );
 
   Future<void> recordRefill(
     String cylinderId, {
     Money? amount,
     String? supplierId,
     String? note,
-  }) => _recordEditableEvent(
-    cylinderId,
-    CylinderEventType.refill,
-    amount: amount,
-    supplierId: supplierId,
-    note: note,
-    state: CylinderState.ready,
-  );
+  }) {
+    _validateMoney(amount);
+    return _recordEditableEvent(
+      cylinderId,
+      CylinderEventType.refill,
+      amount: amount,
+      supplierId: supplierId,
+      note: note,
+      state: CylinderState.ready,
+    );
+  }
 
   Future<void> recordCost(
     String cylinderId, {
     required Money amount,
     String? supplierId,
     String? note,
-  }) => _recordEditableEvent(
-    cylinderId,
-    CylinderEventType.cost,
-    amount: amount,
-    supplierId: supplierId,
-    note: note,
-  );
+  }) {
+    _validateMoney(amount);
+    return _recordEditableEvent(
+      cylinderId,
+      CylinderEventType.cost,
+      amount: amount,
+      supplierId: supplierId,
+      note: note,
+    );
+  }
 
   Future<void> recordExchange(
     String cylinderId, {
@@ -268,6 +286,7 @@ class WalletEngine {
     String? newSerialNumber,
     String? note,
   }) async {
+    _validateMoney(amount);
     await _requireEditable(cylinderId);
     await repository.transact((current) {
       _requireSupplier(current, supplierId);
@@ -528,6 +547,70 @@ class WalletEngine {
     await repository.purge();
   }
 
+  Future<DeletedCylinderData> deleteCylinder(String cylinderId) async {
+    DeletedCylinderData? deleted;
+    await repository.transact((current) {
+      final cylinder = _cylinder(current, cylinderId);
+      deleted = DeletedCylinderData(
+        cylinder: cylinder,
+        events: current.events
+            .where((value) => value.cylinderId == cylinderId)
+            .toList(),
+        reminders: current.reminders
+            .where((value) => value.cylinderId == cylinderId)
+            .toList(),
+        wasFreeEditable: current.freeEditableSelection.contains(cylinderId),
+      );
+      return current.next(
+        cylinders: current.cylinders
+            .where((value) => value.id != cylinderId)
+            .toList(),
+        events: current.events
+            .where((value) => value.cylinderId != cylinderId)
+            .toList(),
+        reminders: current.reminders
+            .where((value) => value.cylinderId != cylinderId)
+            .toList(),
+        freeEditableSelection: current.freeEditableSelection
+            .where((value) => value != cylinderId)
+            .toList(),
+      );
+    });
+    return deleted!;
+  }
+
+  Future<void> restoreDeletedCylinder(DeletedCylinderData deleted) async {
+    await repository.transact((current) {
+      if (current.cylinders.any((value) => value.id == deleted.cylinder.id)) {
+        throw const WalletRuleException('That cylinder is already restored.');
+      }
+      _requireUniqueCylinderSerial(current, deleted.cylinder.serialNumber);
+      final referencedSupplierIds = <String>{
+        if (deleted.cylinder.supplierId != null) deleted.cylinder.supplierId!,
+        ...deleted.events.map((value) => value.supplierId).whereType<String>(),
+      };
+      final currentSupplierIds = current.suppliers
+          .map((value) => value.id)
+          .toSet();
+      if (!currentSupplierIds.containsAll(referencedSupplierIds)) {
+        throw const WalletRuleException(
+          'A linked supplier changed. Restore the wallet from backup instead.',
+        );
+      }
+      final freeSelection = current.freeEditableSelection.toList();
+      if (deleted.wasFreeEditable &&
+          freeSelection.length < freeEditableCylinderLimit) {
+        freeSelection.add(deleted.cylinder.id);
+      }
+      return current.next(
+        cylinders: <Cylinder>[...current.cylinders, deleted.cylinder],
+        events: <CylinderEvent>[...current.events, ...deleted.events],
+        reminders: <Reminder>[...current.reminders, ...deleted.reminders],
+        freeEditableSelection: freeSelection,
+      );
+    });
+  }
+
   Future<void> _recordEditableEvent(
     String cylinderId,
     CylinderEventType type, {
@@ -675,6 +758,12 @@ class WalletEngine {
     }
   }
 
+  void _validateMoney(Money? amount) {
+    if (amount != null && amount.minorUnits <= 0) {
+      throw const WalletRuleException('Enter an amount greater than zero.');
+    }
+  }
+
   void _requireUniqueCylinderSerial(
     WalletData current,
     String? candidate, {
@@ -746,6 +835,9 @@ class WalletEngine {
         ) ||
         data.reminders.any(
           (value) => !cylinderIds.contains(value.cylinderId),
+        ) ||
+        data.events.any(
+          (value) => value.amount != null && value.amount!.minorUnits <= 0,
         )) {
       throw const WalletRuleException('The backup contains broken links.');
     }

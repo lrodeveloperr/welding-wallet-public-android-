@@ -64,37 +64,40 @@ void main() {
     expect(wallet.events.last.note, contains('New serial: NEW-2'));
   });
 
-  test('status changes take one action and refill or exchange resets Ready', () async {
-    final result = await engine.addOrGate(
-      AddCylinderDraft(
-        nickname: '',
-        gasType: 'Argon',
-        relationship: RelationshipType.owned,
-        capacityValue: 80,
-        capacityUnit: 'ft3',
-      ),
-    );
-    final cylinder = result.cylinder!;
-    expect(cylinder.nickname, 'Argon · 80 ft³');
-    expect(cylinder.state, CylinderState.ready);
+  test(
+    'status changes take one action and refill or exchange resets Ready',
+    () async {
+      final result = await engine.addOrGate(
+        AddCylinderDraft(
+          nickname: '',
+          gasType: 'Argon',
+          relationship: RelationshipType.owned,
+          capacityValue: 80,
+          capacityUnit: 'ft3',
+        ),
+      );
+      final cylinder = result.cylinder!;
+      expect(cylinder.nickname, 'Argon · 80 ft³');
+      expect(cylinder.state, CylinderState.ready);
 
-    await engine.changeCylinderState(cylinder.id, CylinderState.low);
-    var wallet = await engine.snapshot();
-    expect(wallet.cylinders.single.state, CylinderState.low);
-    expect(wallet.events.last.type, CylinderEventType.stateChanged);
+      await engine.changeCylinderState(cylinder.id, CylinderState.low);
+      var wallet = await engine.snapshot();
+      expect(wallet.cylinders.single.state, CylinderState.low);
+      expect(wallet.events.last.type, CylinderEventType.stateChanged);
 
-    await engine.recordRefill(cylinder.id);
-    wallet = await engine.snapshot();
-    expect(wallet.cylinders.single.state, CylinderState.ready);
-    expect(wallet.events.last.type, CylinderEventType.refill);
+      await engine.recordRefill(cylinder.id);
+      wallet = await engine.snapshot();
+      expect(wallet.cylinders.single.state, CylinderState.ready);
+      expect(wallet.events.last.type, CylinderEventType.refill);
 
-    await engine.changeCylinderState(cylinder.id, CylinderState.empty);
-    await engine.recordExchange(cylinder.id, newSerialNumber: 'NEW-1');
-    wallet = await engine.snapshot();
-    expect(wallet.cylinders.single.state, CylinderState.ready);
-    expect(wallet.cylinders.single.lifecycle, CylinderLifecycle.active);
-    expect(wallet.events.last.type, CylinderEventType.exchange);
-  });
+      await engine.changeCylinderState(cylinder.id, CylinderState.empty);
+      await engine.recordExchange(cylinder.id, newSerialNumber: 'NEW-1');
+      wallet = await engine.snapshot();
+      expect(wallet.cylinders.single.state, CylinderState.ready);
+      expect(wallet.cylinders.single.lifecycle, CylinderLifecycle.active);
+      expect(wallet.events.last.type, CylinderEventType.exchange);
+    },
+  );
 
   test('legacy cylinders without a status default to Ready', () {
     final encoded = Cylinder(
@@ -105,8 +108,7 @@ void main() {
       lifecycle: CylinderLifecycle.exchanged,
       createdAt: DateTime.utc(2025),
       updatedAt: DateTime.utc(2025),
-    ).toJson()
-      ..remove('state');
+    ).toJson()..remove('state');
     expect(Cylinder.fromJson(encoded).state, CylinderState.ready);
   });
 
@@ -236,4 +238,78 @@ void main() {
       'EUR': 1800,
     });
   });
+
+  test('zero and negative amounts are rejected', () async {
+    final cylinder = (await engine.addOrGate(draft('Shop Argon'))).cylinder!;
+    for (final minorUnits in <int>[0, -1]) {
+      expect(
+        () => engine.recordCost(
+          cylinder.id,
+          amount: Money(minorUnits: minorUnits, currencyCode: 'USD'),
+        ),
+        throwsA(isA<WalletRuleException>()),
+      );
+    }
+  });
+
+  test('a mistaken cylinder deletion can restore linked history', () async {
+    final supplier = await engine.createSupplier('City Gas');
+    final cylinder = (await engine.addOrGate(
+      draft('Shop Argon', supplierId: supplier.id, serial: 'ARG-1'),
+    )).cylinder!;
+    await engine.recordCost(
+      cylinder.id,
+      amount: Money(minorUnits: 2500, currencyCode: 'CAD'),
+      supplierId: supplier.id,
+    );
+    await engine.createReminder(
+      cylinderId: cylinder.id,
+      kind: ReminderKind.refill,
+      title: 'Check cylinder',
+      dueAt: DateTime.utc(2026, 9, 2),
+    );
+
+    final deleted = await engine.deleteCylinder(cylinder.id);
+    var wallet = await engine.snapshot();
+    expect(wallet.cylinders, isEmpty);
+    expect(wallet.events, isEmpty);
+    expect(wallet.reminders, isEmpty);
+
+    await engine.restoreDeletedCylinder(deleted);
+    wallet = await engine.snapshot();
+    expect(wallet.cylinders.single.serialNumber, 'ARG-1');
+    expect(wallet.events, hasLength(2));
+    expect(wallet.reminders, hasLength(1));
+  });
+
+  test(
+    'delete all data requires confirmation and purges wallet records',
+    () async {
+      final supplier = await engine.createSupplier('City Gas');
+      final cylinder = (await engine.addOrGate(
+        draft('Shop Argon', supplierId: supplier.id),
+      )).cylinder!;
+      await engine.recordCost(
+        cylinder.id,
+        amount: Money(minorUnits: 2500, currencyCode: 'CAD'),
+      );
+      await engine.createReminder(
+        cylinderId: cylinder.id,
+        kind: ReminderKind.refill,
+        title: 'Check cylinder',
+        dueAt: DateTime.utc(2026, 9, 2),
+      );
+
+      expect(
+        () => engine.deleteAllWalletData(confirmed: false),
+        throwsA(isA<WalletRuleException>()),
+      );
+      await engine.deleteAllWalletData(confirmed: true);
+      final wallet = await engine.snapshot();
+      expect(wallet.cylinders, isEmpty);
+      expect(wallet.suppliers, isEmpty);
+      expect(wallet.events, isEmpty);
+      expect(wallet.reminders, isEmpty);
+    },
+  );
 }
