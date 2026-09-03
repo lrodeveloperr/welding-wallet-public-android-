@@ -278,7 +278,15 @@ void main() {
     await engine.restoreDeletedCylinder(deleted);
     wallet = await engine.snapshot();
     expect(wallet.cylinders.single.serialNumber, 'ARG-1');
-    expect(wallet.events, hasLength(2));
+    expect(wallet.events, hasLength(3));
+    expect(
+      wallet.events.map((event) => event.type),
+      containsAll(<CylinderEventType>[
+        CylinderEventType.created,
+        CylinderEventType.cost,
+        CylinderEventType.reminderCreated,
+      ]),
+    );
     expect(wallet.reminders, hasLength(1));
   });
 
